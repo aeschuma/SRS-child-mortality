@@ -1,9 +1,13 @@
 # SRS-child-mortality
 Code to reproduce run simulations and estimate child mortality from MCHSS data
 
-NOTE: MCHSS data is not publicly available. Email aeschuma@uw.edu if you wish to access this data, or a version of the data or simulated data you can use for the code in this repository
+NOTE: MCHSS data is not publicly available. We have provided a simulated test data set to use with the code.
 
 ## Folder structure and file descriptions:
+
+data # any test data for use with the code in this repository will be available in this folder
+
+- mchss_test_data.RDS # simulated data set for use with MCHSS analysis code, and some simulation code
 
 MCHSS_anlysis # code for the analysis of MCHSS data
 
