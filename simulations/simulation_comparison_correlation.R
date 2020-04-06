@@ -73,7 +73,9 @@ multinomial <- FALSE
 
 ## load China data to get reference values for simulation parameters
 setwd(savedir)
-chn_all <- readRDS("../china_data/chn_srs_formatted.RDS")
+
+# load test data
+chn_all <- readRDS("../china_data/mchss_test_data.RDS")
 
 ## format data
 chn_all$logpy <- log(chn_all$exposure)

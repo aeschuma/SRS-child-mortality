@@ -33,71 +33,12 @@ datadir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/china_ex
 ## set directory
 setwd(datadir)
 
-## read in data
-load("../china_explore/chn_srs_formatted.Rdata")
+# load test data
+chn_all <- readRDS("../china_data/mchss_test_data.RDS")
 
-#####  format data
-deathvars <- grep("d_n",names(chn_srs),value=T)
-
-## list of causes
-causes <- substr(deathvars,3,nchar(deathvars))
-
-## names for causes
-cause_names <- data.frame(cause=causes,
-                          cause_name=c("prematurity","birth asphyxia/trauma",
-                                       "congenital anomalies","other non-communicable",
-                                       "injuries","diarrhea",
-                                       "acute resp. infections","other grp 1"))
-
-## data frame for old/young cause reference
-cause_ref <- data.frame(cause=causes,
-                        cause_name=c("prematurity","birth asphyxia/trauma",
-                                     "congenital anomalies","other non-communicable",
-                                     "injuries","diarrhea",
-                                     "acute resp. infections","other grp 1"),
-                        cause_ind=1:8,
-                        cause_young_ind=1:8,
-                        cause_old_ind=c(0,0,1:6))
-causes_young <- causes
-causes_old <- causes_young[!(causes_young %in% c("nCH10","nCH11"))]
-chn_srs$strata <- paste(chn_srs$res,chn_srs$reg,sep="_")
-ages <- unique(chn_srs$agegp)
-young_ages <- 1:3
-old_ages <- 4:6
-years <- unique(chn_srs$year)
-stratas <- unique(chn_srs$strata)
-
-## format data long
-chn <- reshape(chn_srs,direction="long",varying=deathvars,v.names="deaths",timevar="cause",
-               times=substr(deathvars,3,length(deathvars)),
-               idvar=c("year","agegp","reg","res"))
-row.names(chn) <- NULL
-
-## extra formatting
-chn$deaths <- ceiling(chn$deaths)
-chn$mx <- chn$deaths/chn$exposure
-chn$logmx <- log(chn$mx)
-chn <- chn[order(chn$strata,chn$agegp,chn$year,chn$cause),]
-chn_all <- as.data.table(chn[!((chn$agegp %in% c(4,5,6)) & (chn$cause %in% c("nCH10","nCH11"))),])
-
-chn <- chn_all[,list(exposure=mean(exposure),
-                     deaths=sum(deaths),
-                     mx=sum(deaths)/mean(exposure),
-                     logmx=log(sum(deaths)/mean(exposure))),
-               by=list(agegp,year,reg,res)]
-chn$agegp_name <- factor(chn$agegp)
-chn$logpy <- log(chn$exposure)
-
-chn_all <- as.data.frame(chn_all)
+# indices and formatting
+causes <- unique(chn_all$cause)
 chn_all$logpy <- log(chn_all$exposure)
-chn_all$young_age <- ifelse(chn_all$agegp %in% 1:2,1,0)
-chn_all <- merge(chn_all,cause_ref)
-chn_all$prematurity <- ifelse(chn_all$cause_name=="prematurity",1,0)
-chn_all$ageXcause <- paste(chn_all$agegp,chn_all$cause,sep="_")
-chn_all$ageXcause <- ifelse(chn_all$agegp==1 | chn_all$cause=="nCH10" | (chn_all$agegp %in% c(4,5,6) & chn_all$cause=="nCH17"), "ref",chn_all$ageXcause)
-chn_all$ageXcause <- factor(chn_all$ageXcause)
-chn_all$ageXcause <- relevel(chn_all$ageXcause,ref="ref")
-chn_all <- chn_all[order(chn_all$reg,chn_all$res,chn_all$agegp,chn_all$year,chn_all$cause_ind),]
 
 ## GLMs on all cause mortality
 dims <- c("year","agegp_name","reg","res")
@@ -114,41 +55,10 @@ for (r in 1:length(loops)) {
     for (rr in 1:nrow(loops[[r]])) {
         i <- i+1
         f <- as.formula(paste("deaths ~ offset(logpy) + ",paste(loops[[r]][rr,],collapse=" + "),sep=""))
-        mod_glm[[i]] <- glm(f,data=chn,family=quasipoisson(link="log"))
-        mod_glm_nb[[i]] <- glm.nb(f,data=chn)
+        mod_glm[[i]] <- glm(f,data=chn_all,family=quasipoisson(link="log"))
+        mod_glm_nb[[i]] <- glm.nb(f,data=chn_all)
     }
 }
-
-# look at residuals
-plot(mod_glm[[1]]$residuals~chn$year)
-plot(mod_glm[[1]]$residuals~chn$agegp_name)
-plot(mod_glm[[4]]$residuals~chn$year)
-plot(mod_glm[[4]]$residuals~chn$agegp_name)
-plot(mod_glm[[5]]$residuals~chn$year)
-plot(mod_glm[[5]]$residuals~chn$agegp_name)
-
-cor(mod_glm[[11]]$residuals,chn$year,method="spearman")
-cor(mod_glm[[14]]$residuals,as.numeric(chn$agegp_name),method="spearman")
-cor(mod_glm[[12]]$residuals,as.numeric(factor(chn$res)),method="spearman")
-cor(mod_glm[[13]]$residuals,as.numeric(factor(chn$reg)),method="spearman")
-
-# look at residuals
-# plot(predict(mod_glm_nb[[1]])-log(chn$deaths)~chn$year)
-# plot(predict(mod_glm_nb[[1]])-log(chn$deaths)~chn$agegp_name)
-# plot(predict(mod_glm_nb[[4]])-log(chn$deaths)~chn$year)
-# plot(predict(mod_glm_nb[[4]])-log(chn$deaths)~chn$agegp_name)
-# plot(predict(mod_glm_nb[[5]])-log(chn$deaths)~chn$year)
-# plot(predict(mod_glm_nb[[5]])-log(chn$deaths)~chn$agegp_name)
-# 
-# cor(predict(mod_glm_nb[[11]])-log(chn$deaths),chn$year,method="spearman")
-# cor(predict(mod_glm_nb[[14]])-log(chn$deaths),as.numeric(chn$agegp_name),method="spearman")
-# cor(predict(mod_glm_nb[[12]])-log(chn$deaths),as.numeric(factor(chn$res)),method="spearman")
-# cor(predict(mod_glm_nb[[13]])-log(chn$deaths),as.numeric(factor(chn$reg)),method="spearman")
-# 
-# cor(cbind((predict(mod_glm_nb[[13]])-log(chn$deaths))[chn$reg=="east"],
-#           (predict(mod_glm_nb[[13]])-log(chn$deaths))[chn$reg=="mid"],
-#           (predict(mod_glm_nb[[13]])-log(chn$deaths))[chn$reg=="west"]),
-#     method="spearman")
 
 ## AIC analysis
 lapply(mod_glm_nb,AIC)
@@ -172,10 +82,10 @@ pdf("graphs/all_cause_poisson_glm_residual_plots.pdf",width=16,height=9)
 for (i in 1:length(mod_glm)) {
     for (j in dims) {
         if (j %in% c("reg","res")) {
-            plot(mod_glm[[i]]$residuals~chn[,factor(get(j))],xlab=j,ylab="Residuals",
+            plot(mod_glm[[i]]$residuals~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
                  main=paste("Poisson GLM:",paste(as.character(mod_glm[[i]]$formula)[-2],collapse=" "),sep=" "))
         } else {
-            plot(mod_glm[[i]]$residuals~chn[,get(j)],xlab=j,ylab="Residuals",
+            plot(mod_glm[[i]]$residuals~chn_all[,get(j)],xlab=j,ylab="Residuals",
                  main=paste("Poisson GLM:",paste(as.character(mod_glm[[i]]$formula)[-2],collapse=" "),sep=" "))   
         }
     }
@@ -196,13 +106,13 @@ dev.off()
 
 pdf("graphs/all_cause_nb_glm_residual_plots.pdf",width=16,height=9)
 for (i in 1:length(mod_glm_nb)) {
-    X <- model.matrix(mod_glm_nb[[i]]$modelInfo$allForm$formula,data=chn)
+    X <- model.matrix(mod_glm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
     preds <- X %*% fixef(mod_glm_nb[[i]])$cond
-    resids <- preds - chn$logmx
+    resids <- preds - chn_all$logmx
     plot(resids,ylab="Residuals",xlab="Observation",
          main=paste("NegBin GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
     for (j in dims) {
-        plot(resids~chn[,factor(get(j))],xlab=j,ylab="Residuals",
+        plot(resids~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
              main=paste("NegBin GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
     }
 }
@@ -222,8 +132,8 @@ for (r in 1:(length(loops)-1)) {
                               " + ", 
                               paste(paste("(1 | ",dims[which(!(dims %in% loops[[r]][rr,]))],")",sep=""),collapse=" + "),
                               sep=""))
-        mod_glmm[[i]] <- glmer(f,offset=log(chn$exposure),data=chn,family=poisson(link=log))
-        mod_glmm_nb[[i]] <- glmmTMB(f,offset=log(chn$exposure),data=chn,family=nbinom1(link="log"))
+        mod_glmm[[i]] <- glmer(f,offset=log(chn_all$exposure),data=chn_all,family=poisson(link=log))
+        mod_glmm_nb[[i]] <- glmmTMB(f,offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
     }
 }
 
@@ -235,43 +145,43 @@ best.glmm.nb <- mod_glmm_nb[[which(unlist(lapply(mod_glmm_nb,AIC))==min(unlist(l
 AIC(best.glm.nb,best.glmm.nb)
 
 ## Random slope on year
-chn$id <- paste(chn$agegp_name,chn$reg,chn$res,sep="_")
-mod.glm.test1 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (year | id),offset=log(chn$exposure),data=chn,family=nbinom1(link="log"))
-mod.glm.test2 <- glmmTMB(deaths ~ agegp_name + reg + res + (year | id),offset=log(chn$exposure),data=chn,family=nbinom1(link="log"))
-mod.glm.test3 <- glmmTMB(deaths ~ agegp_name + reg + res + year + ar1(year | id),offset=log(chn$exposure),data=chn,family=nbinom1(link="log"))
+chn_all$id <- paste(chn_all$agegp_name,chn_all$reg,chn_all$res,sep="_")
+mod.glm.test1 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (year | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
+mod.glm.test2 <- glmmTMB(deaths ~ agegp_name + reg + res + (year | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
+mod.glm.test3 <- glmmTMB(deaths ~ agegp_name + reg + res + year + ar1(year | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
 
 AIC(mod.glm.test1,mod.glm.test2,best.glm.nb,best.glmm.nb,mod.glm.test3)
 
 ## additional models
-mod3 <- glmmTMB(deaths ~ agegp_name + reg + res + (1 | year),offset=log(chn$exposure),data=chn,family=nbinom2(link="log"))
-mod5 <- glmmTMB(deaths ~ agegp_name + reg + res + year,offset=log(chn$exposure),data=chn,family=nbinom2(link="log"))
-mod6 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | year),offset=log(chn$exposure),data=chn,family=nbinom2(link="log"))
-mod7 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | year) + (1 | agegp_name),offset=log(chn$exposure),data=chn,family=nbinom2(link="log"))
-mod8 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | agegp_name),offset=log(chn$exposure),data=chn,family=nbinom2(link="log"))
-mod9 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | agegp_name) + (1 | year) + (1 | reg) + (1 | res),offset=log(chn$exposure),data=chn,family=nbinom2(link="log"))
+mod3 <- glmmTMB(deaths ~ agegp_name + reg + res + (1 | year),offset=log(chn_all$exposure),data=chn_all,family=nbinom2(link="log"))
+mod5 <- glmmTMB(deaths ~ agegp_name + reg + res + year,offset=log(chn_all$exposure),data=chn_all,family=nbinom2(link="log"))
+mod6 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | year),offset=log(chn_all$exposure),data=chn_all,family=nbinom2(link="log"))
+mod7 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | year) + (1 | agegp_name),offset=log(chn_all$exposure),data=chn_all,family=nbinom2(link="log"))
+mod8 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | agegp_name),offset=log(chn_all$exposure),data=chn_all,family=nbinom2(link="log"))
+mod9 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | agegp_name) + (1 | year) + (1 | reg) + (1 | res),offset=log(chn_all$exposure),data=chn_all,family=nbinom2(link="log"))
 
 ## plot residuals, FEs, and REs
 
 pdf("graphs/all_cause_nb_glmm_select_residual_comparisons.pdf",width=16,height=9)
 
 # plot predictions with REs
-X <- model.matrix(~ agegp_name + reg + res,data=chn)
+X <- model.matrix(~ agegp_name + reg + res,data=chn_all)
 REs <- cbind(year=years,RE=ranef(mod3)$cond$year)
 names(REs) <- c("year","RE")
-results <- merge(chn,REs,by="year")
+results <- merge(chn_all,REs,by="year")
 results$strata <- paste(results$res,results$reg,sep="_")
 results <- results[order(results$strata,results$agegp,results$year),]
 preds <- (X %*% fixef(mod3)$cond + results$RE)+log(results$exposure)
-plot(preds-chn$logmx,ylim=c(-3,5))
+plot(preds-chn_all$logmx,ylim=c(-3,5))
 abline(0,0,col="red")
-plot((X %*% fixef(mod3)$cond)-chn$logmx,ylim=c(-3,5),
+plot((X %*% fixef(mod3)$cond)-chn_all$logmx,ylim=c(-3,5),
      main=paste("NegBin GLM:",paste(as.character(mod3$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 abline(0,0,col="red")
-plot(preds~chn$logmx,main=paste("NegBin GLM:",paste(as.character(mod3$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+plot(preds~chn_all$logmx,main=paste("NegBin GLM:",paste(as.character(mod3$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 
-X <- model.matrix(~ agegp_name + reg + res + year,data=chn)
+X <- model.matrix(~ agegp_name + reg + res + year,data=chn_all)
 preds3 <- X %*% fixef(mod5)$cond
-plot(preds3-chn$logmx,ylim=c(-3,5),
+plot(preds3-chn_all$logmx,ylim=c(-3,5),
      main=paste("NegBin GLM:",paste(as.character(mod5$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 abline(0,0,col="red")
 
@@ -287,28 +197,24 @@ abline(0,1,col="red")
 # plot(preds3-preds)
 # plot(preds3-preds2)
 
-plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~chn$agegp_name[chn$logmx!=-Inf],
+plot((preds3[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~chn_all$agegp_name[chn_all$logmx!=-Inf],
      main="No RE, FE on year, age, reg, res")
-plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~jitter(chn$year[chn$logmx!=-Inf],1),
+plot((preds3[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~jitter(chn_all$year[chn_all$logmx!=-Inf],1),
      main="No RE, FE on year, age, reg, res")
-plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~factor(chn$reg)[chn$logmx!=-Inf],
+plot((preds3[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~factor(chn_all$reg)[chn_all$logmx!=-Inf],
      main="No RE, FE on year, age, reg, res")
-plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~factor(chn$res)[chn$logmx!=-Inf],
+plot((preds3[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~factor(chn_all$res)[chn_all$logmx!=-Inf],
      main="No RE, FE on year, age, reg, res")
 
-plot((preds[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~chn$agegp_name[chn$logmx!=-Inf],
+plot((preds[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~chn_all$agegp_name[chn_all$logmx!=-Inf],
      main="RE on year, FE on age, reg, res")
-plot((preds[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~jitter(chn$year[chn$logmx!=-Inf],1),
+plot((preds[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~jitter(chn_all$year[chn_all$logmx!=-Inf],1),
      main="RE on year, FE on age, reg, res")
-plot((preds[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~factor(chn$reg)[chn$logmx!=-Inf],
+plot((preds[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~factor(chn_all$reg)[chn_all$logmx!=-Inf],
      main="RE on year, FE on age, reg, res")
-plot((preds[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~factor(chn$res)[chn$logmx!=-Inf],
+plot((preds[chn_all$logmx!=-Inf]-chn_all$logmx[chn_all$logmx!=-Inf])~factor(chn_all$res)[chn_all$logmx!=-Inf],
      main="RE on year, FE on age, reg, res")
 
-# plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~chn$agegp_name[chn$logmx!=-Inf])
-# plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~jitter(chn$year[chn$logmx!=-Inf],1))
-# plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~factor(chn$reg)[chn$logmx!=-Inf])
-# plot((preds3[chn$logmx!=-Inf]-chn$logmx[chn$logmx!=-Inf])~factor(chn$res)[chn$logmx!=-Inf])
 dev.off()
 
 ## plot GLMM results
@@ -331,15 +237,15 @@ dev.off()
 #     f <- substr(as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[3],
 #                 grep("\\(",as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[3]),
 #                 )
-#     X <- model.matrix(mod_glmm_nb[[i]]$modelInfo$allForm$formula,data=chn)
+#     X <- model.matrix(mod_glmm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
 #     REs <- ranef(mod_glmm_nb[[i]])$cond$year
 #     preds <- X %*% fixef(mod_glmm_nb[[i]])$cond
-#     resids <- preds - chn$logmx
+#     resids <- preds - chn_all$logmx
 #     plot(resids,ylab="Residuals",xlab="Observation",
 #          main=paste("NegBin GLM:",paste(as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 #     for (j in dims) {
 #         j <- "year"
-#         plot(resids~chn[,factor(get(j))],xlab=j,ylab="Residuals",
+#         plot(resids~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
 #              main=paste("NegBin GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 #     }
 # }
@@ -431,7 +337,7 @@ cor(cause_resids[,grep("exp_resids",names(cause_resids),value=T)],use="pairwise.
 cor(cause_resids[,grep("log_resids",names(cause_resids),value=T)],use="pairwise.complete.obs")
 
 pdf("graphs/cause_resid_pairs_plot.pdf",width=16,height = 9)
-for (i in (1:length(deathvars))) {
+for (i in (1:length(causes))) {
     for (j in 1:i) {
         if (i == j) next
         c1 <- deathvars[i]
