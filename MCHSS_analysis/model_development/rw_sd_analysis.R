@@ -4,53 +4,27 @@
 ## Fit a RW model in INLA for each strata we want to do a RW on
 ## plot the estimated RW SD parameters for comparison
 
+# preamble ####
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
+library(tidyverse);library(data.table);library(gtools);
+library(RColorBrewer);library(viridis);library(lattice);library(scales);
+library(MASS);library(lme4);library(glmmTMB); library(INLA);
 
-## the following code makes rstan work on the Box server
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
+# directory for results (set this yourself if you need to change it!)
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
+
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
 }
 
-## load libraries
-library(INLA); library(scales); library(RColorBrewer);
+if (!file.exists(paste0(savedir, "graphs/rw_analysis"))) {
+    dir.create(paste0(savedir, "graphs/rw_analysis"))
+}
 
-########################
-## code running options
-########################
-
-#####################
-## model options
-#####################
-quantiles <- c(0.1,0.5,0.9)
-
-######################
-## define directories
-######################
-
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/estimation_china",sep="")
-
-# directory to save results
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/estimation_china",sep="")
-
-## set directory
-setwd(savedir)
-
-################
-## read and format data
-################
-
-# load test data
-chn_all <- readRDS("../china_data/mchss_test_data.RDS")
+# load and format data ####
+chn_all <- as.data.table(readRDS("../../data/mchss_test_data.RDS"))
 
 ## format data
 chn_all$logpy <- log(chn_all$exposure)
@@ -85,9 +59,10 @@ chn_all$reg2cause <- interaction(chn_all$reg2,chn_all$cause_name)
 chn_all$agereg2cause <- interaction(chn_all$agegp_name,chn_all$reg2,chn_all$cause_name)
 chn_all$rw_index <- as.numeric(interaction(chn_all$ageRW,chn_all$reg2,chn_all$causeRW))
 
-############
-## RW modeling (this also plots the resulting predictions w/ the data)
-############
+# model options ####
+quantiles <- c(0.1,0.5,0.9)
+
+# RW modeling (this also plots the resulting predictions w/ the data) ####
 
 ## set up storage for predicted RW SD
 rw_sds <- chn_all[,c("ageRW","reg2","causeRW","rw_index")]
@@ -96,7 +71,7 @@ rw_sds <- rw_sds[order(rw_sds$rw_index),]
 rw_sds$strata_name <- paste(rw_sds$ageRW,rw_sds$reg2,rw_sds$causeRW,sep="_")
 rw_sds$sd_med <- rw_sds$sd_lower <- rw_sds$sd_upper <- NA
 
-pdf("graphs/rw_analysis/preds.pdf",
+pdf(paste0(savedir,"graphs/rw_analysis/preds.pdf"),
     width=8,height=8)
 
 for (i in 1:nrow(rw_sds)) {
@@ -186,9 +161,7 @@ for (i in 1:nrow(rw_sds)) {
 }
 dev.off()
 
-##################
 ## Plot the predicted RW SDs
-##################
 
 # cause colors
 cause_cols <- brewer.pal(length(unique(rw_sds$causeRW)),"Set2")
@@ -217,7 +190,7 @@ rw_sds$cause_pch <- cause_pchs[factor(rw_sds$causeRW)]
 cause_pchs2 <- as.character(1:length(unique(rw_sds$causeRW)))
 rw_sds$cause_pch2 <- cause_pchs2[factor(rw_sds$causeRW)]
 
-pdf("graphs/rw_analysis/rw_sds.pdf",
+pdf(paste0(savedir,"graphs/rw_analysis/rw_sds.pdf"),
     width=16,height=9)
 
 # graphical parameters

@@ -12,22 +12,21 @@ library(grid); library(gridExtra); library(viridis);
 ## define directories
 #---------------
 
-# directory where you save your results from '../model_fitting/model_fit_inla.R' (set these yourself)
-datadir <- "~/Dropbox/dissertation_2/cause_specific_child_mort/estimation_china/results"
-setwd(datadir)
+# directory for results
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
 
-#------------
-# load data
-#------------
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/heatmaps"))) {
+    dir.create(paste0(savedir, "graphs/heatmaps"))
+}
 
-# INLA model
-mod_inla <- readRDS("china_results_pcpriors.RDS")
-
-# results from INLA model in wide format
-results <- readRDS("china_results_wide.RDS")
-
-# results from INLA model in long format
-res <- readRDS("china_results_long.RDS")
+# load our results
+mod_inla <- readRDS(paste0(savedir, "results/china_results_pcpriors.RDS"))
+results <- readRDS(paste0(savedir, "results/china_results_wide.RDS"))
+res <- readRDS(paste0(savedir, "results/china_results_long.RDS"))
 
 #-----------------
 ## Various posterior predictions to calculate posterior median change in mortality
@@ -166,7 +165,7 @@ ggplot(data = heatmap_long[heatmap_long$measure == "diff_fe_rw_m"
         strip.text = element_text(size = textsize, face = "bold"),
         axis.text.y = element_text(size = textsize, face = "bold"),
         axis.text.x = element_text(size = textsize, angle = 45, face = "bold", vjust = 1, hjust = 1))
-ggsave(filename = paste0("../graphs/mx_pcpriors_fe_rw_m_heatmap_0-6d.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/heatmaps/mx_pcpriors_fe_rw_m_heatmap_0-6d.pdf"), 
        device = "pdf", width = 7, height = 8)
 
 ggplot(data = heatmap_long[heatmap_long$measure == "rel_diff_fe_rw_m" 
@@ -189,5 +188,5 @@ ggplot(data = heatmap_long[heatmap_long$measure == "rel_diff_fe_rw_m"
         strip.text = element_text(size = textsize, face = "bold"),
         axis.text.y = element_text(size = textsize, face = "bold"),
         axis.text.x = element_text(size = textsize, angle = 45, face = "bold", vjust = 1, hjust = 1))
-ggsave(filename = paste0("../graphs/mx_pcpriors_rel_fe_rw_m_heatmap_1-5m.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/heatmaps/mx_pcpriors_rel_fe_rw_m_heatmap_1-5m.pdf"), 
        device = "pdf", width = 7, height = 8)

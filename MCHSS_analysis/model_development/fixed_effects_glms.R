@@ -3,44 +3,35 @@
 ## 1. Fit GLMs on China data to assess the drivers of variability and structure/correlations in residuals
 ## 2. Fit GLMMs on China data to assess model fit, drivers of variability, and correlation in residuals
 
+# preamble ####
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
+library(tidyverse);library(data.table);library(gtools);
+library(RColorBrewer);library(viridis);library(lattice);library(scales);
+library(MASS);library(lme4);library(glmmTMB);
 
-## the following code makes rstan work on the Box server
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
+# directory for results (set this yourself if you need to change it!)
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
+
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
 }
 
-library(data.table);library(gtools);library(RColorBrewer);library(MASS);library(lme4);
-library(glmmTMB);library(stringr);library(lattice);library(scales);
+if (!file.exists(paste0(savedir, "graphs/fe_re_glms"))) {
+    dir.create(paste0(savedir, "graphs/fe_re_glms"))
+}
 
-## define directories
-
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/model_development/glm_glmm",sep="")
-
-# directory to load MCHSS data
-datadir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/china_explore",sep="")
-
-## set directory
-setwd(datadir)
-
-# load test data
-chn_all <- readRDS("../china_data/mchss_test_data.RDS")
+# load and format data ####
+chn_all <- as.data.table(readRDS("../../data/mchss_test_data.RDS"))
 
 # indices and formatting
 causes <- unique(chn_all$cause)
 chn_all$logpy <- log(chn_all$exposure)
 
-## GLMs on all cause mortality
+# All-cause mortality analyses ####
+
+## GLMs ####
 dims <- c("year","agegp_name","reg","res")
 
 loops <- list()
@@ -49,91 +40,99 @@ for (rr in 1:length(dims)) {
 }
 mod_glm <- list()
 mod_glm_nb <- list()
-
+formulas <- list()
 i <- 0
 for (r in 1:length(loops)) {
     for (rr in 1:nrow(loops[[r]])) {
         i <- i+1
-        f <- as.formula(paste("deaths ~ offset(logpy) + ",paste(loops[[r]][rr,],collapse=" + "),sep=""))
-        mod_glm[[i]] <- glm(f,data=chn_all,family=quasipoisson(link="log"))
-        mod_glm_nb[[i]] <- glm.nb(f,data=chn_all)
+        formulas[[i]] <- as.formula(paste("deaths ~ offset(logpy) + ",paste(loops[[r]][rr,],collapse=" + "),sep=""))
+        mod_glm[[i]] <- glm(formulas[[i]],data=chn_all,family=quasipoisson(link="log"))
+        mod_glm_nb[[i]] <- glm.nb(formulas[[i]],data=chn_all)
     }
 }
 
-## AIC analysis
+##  AIC analysis
 lapply(mod_glm_nb,AIC)
 best.glm.nb <- mod_glm_nb[[which(unlist(lapply(mod_glm_nb,AIC))==min(unlist(lapply(mod_glm_nb,AIC))))]]
 
 ## plot FEs and residuals
-setwd(wd)
-pdf("graphs/all_cause_poisson_glm_fe_plots.pdf",width=16,height=9)
+pdf(paste0(savedir,"graphs/fe_re_glms/all_cause_poisson_glm_fe_plots.pdf"),width=16,height=9)
 for (i in 1:length(mod_glm)) {
     ncoef <- length(mod_glm[[i]]$coefficients)
     se <- summary(mod_glm[[i]])$coef[,2]
-    plot(mod_glm[[i]]$coefficients,ylim=range(c(mod_glm[[i]]$coefficients-1.96*se,mod_glm[[i]]$coefficients+1.96*se)),
-         xaxt="n",main=paste("Poisson GLM:",paste(as.character(mod_glm[[i]]$formula)[-2],collapse=" "),sep=" "),
+    plot(mod_glm[[i]]$coefficients,
+         ylim=range(c(mod_glm[[i]]$coefficients-1.96*se,mod_glm[[i]]$coefficients+1.96*se)),
+         xaxt="n",
+         main=paste("Poisson GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
          xlab="coefficient",ylab="FE and 95% CI")
     segments(1:ncoef,mod_glm[[i]]$coefficients-1.96*se,1:ncoef,mod_glm[[i]]$coefficients+1.96*se)
     axis(1,at=1:ncoef,labels=names(coef(mod_glm[[i]])))
 }
 dev.off()
 
-pdf("graphs/all_cause_poisson_glm_residual_plots.pdf",width=16,height=9)
+pdf(paste0(savedir,"graphs/fe_re_glms/all_cause_poisson_glm_residual_plots.pdf"),width=16,height=9)
 for (i in 1:length(mod_glm)) {
     for (j in dims) {
         if (j %in% c("reg","res")) {
-            plot(mod_glm[[i]]$residuals~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
-                 main=paste("Poisson GLM:",paste(as.character(mod_glm[[i]]$formula)[-2],collapse=" "),sep=" "))
+            plot(mod_glm[[i]]$residuals~chn_all[,factor(get(j))],
+                 main=paste("Poisson GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
+                 xlab=j,ylab="Residuals"
+            )
         } else {
-            plot(mod_glm[[i]]$residuals~chn_all[,get(j)],xlab=j,ylab="Residuals",
-                 main=paste("Poisson GLM:",paste(as.character(mod_glm[[i]]$formula)[-2],collapse=" "),sep=" "))   
+            plot(mod_glm[[i]]$residuals~chn_all[,get(j)],
+                 main=paste("Poisson GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
+                 xlab=j,ylab="Residuals")   
         }
     }
 }
 dev.off()
 
-pdf("graphs/all_cause_nb_glm_fe_plots.pdf",width=16,height=9)
+pdf(paste0(savedir,"graphs/fe_re_glms/all_cause_nb_glm_fe_plots.pdf"),width=16,height=9)
 for (i in 1:length(mod_glm_nb)) {
-    ncoef <- length(fixef(mod_glm_nb[[i]])$cond)
-    se <- sqrt(diag(vcov(mod_glm_nb[[i]])$cond))
-    plot(fixef(mod_glm_nb[[i]])$cond,ylim=range(c(fixef(mod_glm_nb[[i]])$cond-1.96*se,fixef(mod_glm_nb[[i]])$cond+1.96*se)),
-         xaxt="n",main=paste("Poisson GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "),
+    ncoef <- length(coef(mod_glm_nb[[i]]))
+    se <- sqrt(diag(vcov(mod_glm_nb[[i]])))
+    plot(coef(mod_glm_nb[[i]]),
+         ylim=range(c(coef(mod_glm_nb[[i]])-1.96*se,coef(mod_glm_nb[[i]])+1.96*se)),
+         xaxt="n",
+         main=paste("NegBin GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
          xlab="coefficient",ylab="FE and 95% CI")
-    segments(1:ncoef,fixef(mod_glm_nb[[i]])$cond-1.96*se,1:ncoef,fixef(mod_glm_nb[[i]])$cond+1.96*se)
+    segments(1:ncoef,coef(mod_glm_nb[[i]])-1.96*se,1:ncoef,coef(mod_glm_nb[[i]])+1.96*se)
     axis(1,at=1:ncoef,labels=names(coef(mod_glm_nb[[i]])))
 }
 dev.off()
 
-pdf("graphs/all_cause_nb_glm_residual_plots.pdf",width=16,height=9)
+pdf(paste0(savedir,"graphs/fe_re_glms/all_cause_nb_glm_residual_plots.pdf"),width=16,height=9)
 for (i in 1:length(mod_glm_nb)) {
-    X <- model.matrix(mod_glm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
-    preds <- X %*% fixef(mod_glm_nb[[i]])$cond
+    X <- model.matrix(formulas[[i]], data = chn_all)
+    preds <- X %*% coef(mod_glm_nb[[i]])
     resids <- preds - chn_all$logmx
-    plot(resids,ylab="Residuals",xlab="Observation",
-         main=paste("NegBin GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+    plot(resids,
+         main=paste("NegBin GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
+         ylab="Residuals",xlab="Observation")
     for (j in dims) {
-        plot(resids~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
-             main=paste("NegBin GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+        plot(resids~chn_all[,factor(get(j))],
+             main=paste("NegBin GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
+             xlab=j,ylab="Residuals")
     }
 }
 dev.off()
 
-## GLMMs on all-cause mortality
+## GLMMs ####
 
 mod_glmm <- list()
 mod_glmm_nb <- list()
-
+formulas <- list()
 i <- 0
 for (r in 1:(length(loops)-1)) {
     for (rr in 1:nrow(loops[[r]])) {
         i <- i+1
-        f <- as.formula(paste("deaths ~ ",
+        formulas[[i]] <- as.formula(paste("deaths ~ ",
                               paste(loops[[r]][rr,],collapse=" + "),
                               " + ", 
                               paste(paste("(1 | ",dims[which(!(dims %in% loops[[r]][rr,]))],")",sep=""),collapse=" + "),
                               sep=""))
-        mod_glmm[[i]] <- glmer(f,offset=log(chn_all$exposure),data=chn_all,family=poisson(link=log))
-        mod_glmm_nb[[i]] <- glmmTMB(f,offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
+        mod_glmm[[i]] <- glmer(formulas[[i]],offset=log(chn_all$exposure),data=chn_all,family=poisson(link=log))
+        mod_glmm_nb[[i]] <- glmmTMB(formulas[[i]],offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
     }
 }
 
@@ -148,7 +147,7 @@ AIC(best.glm.nb,best.glmm.nb)
 chn_all$id <- paste(chn_all$agegp_name,chn_all$reg,chn_all$res,sep="_")
 mod.glm.test1 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (year | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
 mod.glm.test2 <- glmmTMB(deaths ~ agegp_name + reg + res + (year | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
-mod.glm.test3 <- glmmTMB(deaths ~ agegp_name + reg + res + year + ar1(year | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
+mod.glm.test3 <- glmmTMB(deaths ~ agegp_name + reg + res + year + ar1(-1 + factor(year) | id),offset=log(chn_all$exposure),data=chn_all,family=nbinom1(link="log"))
 
 AIC(mod.glm.test1,mod.glm.test2,best.glm.nb,best.glmm.nb,mod.glm.test3)
 
@@ -162,11 +161,11 @@ mod9 <- glmmTMB(deaths ~ agegp_name + reg + res + year + (1 | agegp_name) + (1 |
 
 ## plot residuals, FEs, and REs
 
-pdf("graphs/all_cause_nb_glmm_select_residual_comparisons.pdf",width=16,height=9)
+pdf(paste0(savedir,"graphs/fe_re_glms/all_cause_nb_glmm_select_residual_comparisons.pdf"),width=16,height=9)
 
 # plot predictions with REs
 X <- model.matrix(~ agegp_name + reg + res,data=chn_all)
-REs <- cbind(year=years,RE=ranef(mod3)$cond$year)
+REs <- cbind(year=unique(chn_all$year),RE=ranef(mod3)$cond$year)
 names(REs) <- c("year","RE")
 results <- merge(chn_all,REs,by="year")
 results$strata <- paste(results$res,results$reg,sep="_")
@@ -219,42 +218,22 @@ dev.off()
 
 ## plot GLMM results
 
-# pdf("graphs/all_cause_nb_glmm_fe_plots.pdf",width=16,height=9)
-# for (i in 1:length(mod_glmm_nb)) {
-#     ncoef <- length(fixef(mod_glmm_nb[[i]])$cond)
-#     se <- sqrt(diag(vcov(mod_glmm_nb[[i]])$cond))
-#     plot(fixef(mod_glmm_nb[[i]])$cond,ylim=range(c(fixef(mod_glmm_nb[[i]])$cond-1.96*se,fixef(mod_glmm_nb[[i]])$cond+1.96*se)),
-#          xaxt="n",main=paste("Poisson GLM:",paste(as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "),
-#          xlab="coefficient",ylab="FE and 95% CI")
-#     segments(1:ncoef,fixef(mod_glmm_nb[[i]])$cond-1.96*se-1.96*se,1:ncoef,fixef(mod_glmm_nb[[i]])$cond-1.96*se+1.96*se)
-#     axis(1,at=1:ncoef,labels=names(coef(mod_glmm_nb[[i]])))
-# }
-# dev.off()
-# 
-# pdf("graphs/all_cause_nb_glmm_residual_plots.pdf",width=16,height=9)
-# for (i in 1:length(mod_glmm_nb)) {
-#     i <- 1
-#     f <- substr(as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[3],
-#                 grep("\\(",as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[3]),
-#                 )
-#     X <- model.matrix(mod_glmm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
-#     REs <- ranef(mod_glmm_nb[[i]])$cond$year
-#     preds <- X %*% fixef(mod_glmm_nb[[i]])$cond
-#     resids <- preds - chn_all$logmx
-#     plot(resids,ylab="Residuals",xlab="Observation",
-#          main=paste("NegBin GLM:",paste(as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
-#     for (j in dims) {
-#         j <- "year"
-#         plot(resids~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
-#              main=paste("NegBin GLM:",paste(as.character(mod_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
-#     }
-# }
-# dev.off()
+pdf(paste0(savedir,"graphs/fe_re_glms/all_cause_nb_glmm_fe_plots.pdf"),width=16,height=9)
+for (i in 1:length(mod_glmm_nb)) {
+    ncoef <- length(coef(mod_glmm_nb[[i]]))
+    se <- sqrt(diag(vcov(mod_glmm_nb[[i]])[[1]]))
+    plot(fixef(mod_glmm_nb[[i]])$cond,
+         ylim=range(c(fixef(mod_glmm_nb[[i]])$cond-1.96*se,fixef(mod_glmm_nb[[i]])$cond+1.96*se)),
+         xaxt="n",main=paste("Poisson GLM:",paste(as.character(mod_glmm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "),
+         xlab="coefficient",ylab="FE and 95% CI")
+    segments(1:ncoef,fixef(mod_glmm_nb[[i]])$cond-1.96*se-1.96*se,1:ncoef,fixef(mod_glmm_nb[[i]])$cond-1.96*se+1.96*se)
+    axis(1,at=1:ncoef,labels=names(coef(mod_glmm_nb[[i]])))
+}
+dev.off()
 
-####################
-#### Cause specific mortality
-####################
+# Cause-specific mortality analyses ####
 
+## GLMs ####
 dims2 <- c("year","agegp_name","reg","res","cause")
 
 loops2 <- list()
@@ -263,69 +242,70 @@ for (rr in 1:length(dims2)) {
 }
 
 mod_cause_glm <- list()
-
+formulals <- list()
 i <- 0
 for (r in 1:length(loops2)) {
     for (rr in 1:nrow(loops2[[r]])) {
         i <- i+1
-        f <- as.formula(paste("deaths ~ offset(logpy) + ",paste(loops2[[r]][rr,],collapse=" + "),sep=""))
-        mod_cause_glm[[i]] <- glm(f,data=chn_all,family=quasipoisson(link="log"))
+        formulas[[i]] <- as.formula(paste("deaths ~ offset(logpy) + ",paste(loops2[[r]][rr,],collapse=" + "),sep=""))
+        mod_cause_glm[[i]] <- glm(formulas[[i]],data=chn_all, family = poisson)
     }
 }
 
 ## AIC analysis
-do.call(anova,mod_cause_glm)
-best.cause.glm <- mod_cause_glm_nb[[which(unlist(lapply(mod_cause_glm_nb,AIC))==min(unlist(lapply(mod_cause_glm_nb,AIC))))]]
+do.call(anova, mod_cause_glm)
+best.cause.glm <- mod_cause_glm[[which(unlist(lapply(mod_cause_glm,AIC))==min(unlist(lapply(mod_cause_glm,AIC))))]]
 
 ## plot FEs and residuals
-setwd(wd)
-pdf("graphs/cause_specific_nb_glm_fe_plots.pdf",width=16,height=9)
+pdf(paste0(savedir,"graphs/fe_re_glms/cause_specific_glm_fe_plots.pdf"),width=16,height=9)
 par(oma=c(5,2,2,2),xpd=NA)
-for (i in 1:length(mod_cause_glm_nb)) {
-    ncoef <- length(fixef(mod_cause_glm_nb[[i]])$cond)
-    se <- sqrt(diag(vcov(mod_cause_glm_nb[[i]])$cond))
-    plot(fixef(mod_cause_glm_nb[[i]])$cond,ylim=range(c(fixef(mod_cause_glm_nb[[i]])$cond-1.96*se,fixef(mod_cause_glm_nb[[i]])$cond+1.96*se)),
-         xaxt="n",main=paste("NegBin GLM:",paste(as.character(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "),
+for (i in 1:length(mod_cause_glm)) {
+    ncoef <- length(coef(mod_cause_glm[[i]]))
+    se <- sqrt(diag(vcov(mod_cause_glm[[i]])))
+    plot(coef(mod_cause_glm[[i]]),
+         ylim=range(c(coef(mod_cause_glm[[i]])-1.96*se,coef(mod_cause_glm[[i]])+1.96*se)),
+         xaxt="n",
+         main=paste("Pois GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "),
          xlab="",ylab="FE and 95% CI")
-    segments(1:ncoef,fixef(mod_cause_glm_nb[[i]])$cond-1.96*se,1:ncoef,fixef(mod_cause_glm_nb[[i]])$cond+1.96*se)
+    segments(1:ncoef,coef(mod_cause_glm[[i]])-1.96*se,1:ncoef,coef(mod_cause_glm[[i]])+1.96*se)
     axis(1,at=1:ncoef,labels=FALSE)
-    text(x=1:ncoef,y=par()$usr[3]-0.1*(par()$usr[4]-par()$usr[3]),labels=names(fixef(mod_cause_glm_nb[[i]])$cond),
+    text(x=1:ncoef,y=par()$usr[3]-0.1*(par()$usr[4]-par()$usr[3]),labels=names(coef(mod_cause_glm[[i]])),
          srt=45, adj=1, xpd=NA)
 }
 dev.off()
 
-pdf("graphs/cause_specific_nb_glm_residual_plots_mx.pdf",width=16,height=9)
-for (i in 1:length(mod_cause_glm_nb)) {
-    X <- model.matrix(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
-    preds <- exp(X %*% fixef(mod_cause_glm_nb[[i]])$cond)
+pdf(paste0(savedir,"graphs/fe_re_glms/cause_specific_glm_residual_plots_mx.pdf"),width=16,height=9)
+for (i in 1:length(mod_cause_glm)) {
+    X <- model.matrix(formulas[[i]],data=chn_all)
+    preds <- exp(X %*% coef(mod_cause_glm[[i]]))
     resids <- preds - chn_all$mx
     plot(resids,ylab="Residuals (mx scale)",xlab="Observation",
-         main=paste("NegBin GLM:",paste(as.character(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+         main=paste("Pois GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "))
     for (j in dims2) {
         plot(resids~chn_all[,factor(get(j))],xlab=j,ylab="Residuals",
-             main=paste("NegBin GLM:",paste(as.character(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+             main=paste("Pois GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "))
     }
 }
 dev.off()
 
-pdf("graphs/cause_specific_nb_glm_residual_plots_logmx_noInf.pdf",width=16,height=9)
-for (i in 1:length(mod_cause_glm_nb)) {
-    X <- model.matrix(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
-    preds <- X %*% fixef(mod_cause_glm_nb[[i]])$cond
+pdf(paste0(savedir,"graphs/fe_re_glms/cause_specific_glm_residual_plots_logmx_noInf.pdf"),width=16,height=9)
+for (i in 1:length(mod_cause_glm)) {
+    X <- model.matrix(formulas[[i]],data=chn_all)
+    preds <- X %*% coef(mod_cause_glm[[i]])
     resids <- preds[!is.infinite(chn_all$logmx)] - chn_all$logmx[!is.infinite(chn_all$logmx)]
     plot(resids,ylab="Residuals (log scale, no -Inf)",xlab="Observation",
-         main=paste("NegBin GLM:",paste(as.character(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+         main=paste("Pois GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "))
     for (j in dims2) {
         plot(resids~chn_all[!is.infinite(chn_all$logmx),factor(get(j))],xlab=j,ylab="Residuals",
-             main=paste("NegBin GLM:",paste(as.character(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
+             main=paste("Pois GLM:",paste(as.character(formulas[[i]])[-2],collapse=" "),sep=" "))
     }
 }
 dev.off()
 
 ## cause correlations in residuals
-i <- length(mod_cause_glm_nb)
-X <- model.matrix(mod_cause_glm_nb[[i]]$modelInfo$allForm$formula,data=chn_all)
-preds <- X %*% fixef(mod_cause_glm_nb[[i]])$cond
+big_i <- length(mod_cause_glm)
+X <- model.matrix(formulas[[big_i]],data=chn_all)
+preds <- X %*% coef(mod_cause_glm[[big_i]])
 chn_all$preds <- preds
 chn_all$exp_resids <- exp(chn_all$preds) - chn_all$mx
 chn_all$log_resids <- chn_all$preds - chn_all$logmx
@@ -336,20 +316,21 @@ cause_resids <- as.data.frame(reshape(chn_all[chn_all$logmx!=-Inf,c("log_resids"
 cor(cause_resids[,grep("exp_resids",names(cause_resids),value=T)],use="pairwise.complete.obs")
 cor(cause_resids[,grep("log_resids",names(cause_resids),value=T)],use="pairwise.complete.obs")
 
-pdf("graphs/cause_resid_pairs_plot.pdf",width=16,height = 9)
+deathvars <- unique(chn_all$cause)
+pdf(paste0(savedir,"graphs/fe_re_glms/cause_resid_pairs_plot.pdf"),width=16,height = 9)
 for (i in (1:length(causes))) {
     for (j in 1:i) {
         if (i == j) next
         c1 <- deathvars[i]
         c2 <- deathvars[j]
-        plot(cause_resids[,gsub("d_","log_resids.",c1)] ~ cause_resids[,gsub("d_","log_resids.",c2)],
+        plot(cause_resids[,paste0("log_resids.",c1)] ~ cause_resids[,paste0("log_resids.",c2)],
              xlab=c2,ylab=c1)
     }
 }
 pairs(cause_resids[,grep("log_resids",names(cause_resids),value=T)])
 dev.off()
 
-## GLMMs on cause-specific mortality
+## GLMMs ####
 
 mod_cause_glmm_nb <- list()
 
@@ -371,7 +352,7 @@ lapply(mod_cause_glmm_nb,AIC)
 best.cause.glmm.nb <- mod_cause_glmm_nb[[which(unlist(lapply(mod_cause_glmm_nb,AIC))==min(unlist(lapply(mod_cause_glmm_nb,AIC))))]]
 
 ## compare glm and glmm AIC
-AIC(best.cause.glm.nb,best.cause.glmm.nb)
+AIC(best.cause.glm,best.cause.glmm.nb)
 
 ## extra models
 # chn_all$id <- paste(chn_all$agegp_name,chn_all$reg,chn_all$res,chn_all$cause,sep="_")
@@ -436,23 +417,27 @@ cor(cause_resids3[,grep("preds",names(cause_resids3),value=T)],use="pairwise.com
 pairs(cause_resids3[,grep("resids",names(cause_resids3),value=T)],
       main=paste("NegBin GLM:",paste(as.character(mod3$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 
-pdf("graphs/cause_resid_pairs_plot_glmm_yearRE_corcauseRE.pdf",width=16,height = 9)
+pdf(paste0(savedir,"graphs/fe_re_glms/cause_resid_pairs_plot_glmm_yearRE_corcauseRE.pdf"),width=16,height = 9)
 pairs(cause_resids2[,grep("resids",names(cause_resids2),value=T)],
       main=paste("NegBin GLM:",paste(as.character(mod3$modelInfo$allForm$formula)[-2],collapse=" "),sep=" "))
 dev.off()
 
-#############
-## Testing different dimensions for time RE
-#############
+# Testing different dimensions for time RE ####
 
 ## raw data
-chn_agg_age_year <- aggregate(cbind(chn_all$deaths,chn_all$exposure),by=list(chn_all$agegp,chn_all$year),sum)
+chn_agg_age_year <- aggregate(cbind(chn_all$deaths,chn_all$exposure),
+                              by=list(chn_all$agegp,chn_all$year),sum)
 chn_agg_age_year$mx <- chn_agg_age_year[,3]/chn_agg_age_year[,4]
 chn_agg_age_year$col <- as.numeric(as.factor(chn_agg_age_year$Group.1))
-chn_agg_cause_year <- aggregate(cbind(chn_all$deaths,chn_all$exposure),by=list(chn_all$cause,chn_all$year),sum)
+
+chn_agg_cause_year <- aggregate(cbind(chn_all$deaths,chn_all$exposure),
+                                by=list(chn_all$cause,chn_all$year),sum)
 chn_agg_cause_year$mx <- chn_agg_cause_year[,3]/chn_agg_cause_year[,4]
 chn_agg_cause_year$col <- as.numeric(as.factor(chn_agg_cause_year$Group.1))
-chn_agg_strata_year <- aggregate(cbind(chn_all$deaths,chn_all$exposure),by=list(chn_all$strata,chn_all$year),sum)
+
+chn_all$strata <- paste(chn_all$reg, chn_all$res, sep = "_")
+chn_agg_strata_year <- aggregate(cbind(chn_all$deaths,chn_all$exposure),
+                                 by=list(chn_all$strata,chn_all$year),sum)
 chn_agg_strata_year$mx <- chn_agg_strata_year[,3]/chn_agg_strata_year[,4]
 chn_agg_strata_year$col <- as.numeric(as.factor(chn_agg_strata_year$Group.1))
 
@@ -500,17 +485,21 @@ for (i in 1:7) {
     print(xyplot(chn_all[,get(paste0("res_mod",i))]~chn_all$year | factor(chn_all$strata),groups=chn_all$cause,main=paste0("mod",i,": colors = cause")))
 }
 
-#############
-## Plot model predictions and compare to raw data
-#############
+# Plot model predictions and compare to raw data ####
 causes <- unique(chn_all$cause)
+stratas <- unique(chn_all$strata)
+ages <- unique(chn_all$agegp)
 chn_all$preds <- predict(mod7,type="link") - log(chn_all$exposure)
-setwd(wd)
-pdf("graphs/glmm_model_preds_vs_data_over_time_noagecauseinteraction.pdf",width=16,height=9)
+
+pdf(paste0(savedir,"graphs/fe_re_glms/glmm_model_preds_vs_data_over_time_noagecauseinteraction.pdf"),width=16,height=9)
 for (i in 1:length(unique(chn_all$strata))) {
     for (j in 1:length(unique(chn_all$cause))) {
         par(mfrow=c(2,3))
         for (k in 1:length(unique(chn_all$agegp))) {
+            # skip impossible age-cause combos
+            if (ages[k] %in% c(4, 5, 6) & causes[j] %in% c("nCH10", "nCH11")) next
+            
+            # subset data and plot
             tmp <- chn_all[chn_all$strata==stratas[i] & chn_all$cause == causes[j] & chn_all$agegp == ages[k], ]
             plot(logmx~year,data=tmp,col=alpha("red",0.5),pch=19,ylim=range(c(tmp$preds,tmp$logmx[!is.infinite(tmp$logmx)])),
                  main=paste0("cause: ",causes[j],"; strata: ",stratas[i],"; age group: ",ages[k]))

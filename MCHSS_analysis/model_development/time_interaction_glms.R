@@ -2,30 +2,30 @@
 ## 12/17/2019
 ## Fit a bunch of GLMs to MCHSS data and explore residuals
 
+# preamble ####
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
+library(tidyverse);library(data.table);library(gtools);
+library(RColorBrewer);library(viridis);library(lattice);library(scales);
+library(MASS);library(lme4);library(glmmTMB);
 
-## the following code makes rstan work on the Box server
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
+# directory for results (set this yourself if you need to change it!)
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
+
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
 }
 
-## load libraries
-library(RColorBrewer);library(scales);
+if (!file.exists(paste0(savedir, "graphs/model_testing"))) {
+    dir.create(paste0(savedir, "graphs/model_testing"))
+}
 
-## code running options
-fe_models <- FALSE
+# code running options ####
+fe_models <- TRUE
 time_models <- TRUE
 
-## plotting functions
+# plotting functions ####
 
 # plotting function for time residuals
 plot_time_resids <- function(mymodel,mydata,
@@ -213,23 +213,8 @@ plot_time_resids <- function(mymodel,mydata,
     }
 }
 
-## define directories
-
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/estimation_china",sep="")
-
-# directory to save results
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/estimation_china",sep="")
-
-## set directory
-setwd(savedir)
-
-################
-## read and format data
-################
-
-# load test data
-chn_all <- readRDS("../china_data/mchss_test_data.RDS")
+# load and format data ####
+chn_all <- as.data.table(readRDS("../../data/mchss_test_data.RDS"))
 
 ## format data
 chn_all$logpy <- log(chn_all$exposure)
@@ -261,9 +246,7 @@ chn_all$reg2cause <- interaction(chn_all$reg2,chn_all$cause_name)
 chn_all$agereg2cause <- interaction(chn_all$agegp_name,chn_all$reg2,chn_all$cause_name)
 chn_all$rw_index <- as.numeric(interaction(chn_all$ageRW,chn_all$reg2,chn_all$causeRW))
 
-###########
-## Modeling
-###########
+# Modeling ####
 
 ## FE interaction modeling
 if (fe_models) {
@@ -310,7 +293,8 @@ if (time_models) {
     mywidth <- 8
     myheight <- 9
     
-    pdf("graphs/model_testing/time_diag_resids_overall_time.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_overall_time.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod1,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -328,7 +312,8 @@ if (time_models) {
                  data=chn_all,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_region.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_region.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod2,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -346,7 +331,8 @@ if (time_models) {
                  data=chn_all,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_age.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_age.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod3,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -364,7 +350,8 @@ if (time_models) {
                  data=chn_all,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_cause.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_cause.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod4,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -382,7 +369,8 @@ if (time_models) {
                  data=chn_all,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_agereg2.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_agereg2.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod5,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -400,7 +388,8 @@ if (time_models) {
                  data=chn_all,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_agecause.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_agecause.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod6,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -418,7 +407,8 @@ if (time_models) {
                  data=chn_all,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_reg2cause.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_reg2cause.pdf"),
+        width=mywidth,height=myheight)
     
     plot_time_resids(tmod7,chn_all,
                      myagecols,myreg2cols,mycausecols,
@@ -427,18 +417,30 @@ if (time_models) {
     
     dev.off()
     
+    # for fake data, need to delete groups with all 0 deaths
+    summary_dat <- chn_all %>% group_by(reg2, agegp, cause) %>% 
+        summarise(min_deaths = min(deaths),
+                  med_deaths = median(deaths),
+                  max_deaths = max(deaths),
+                  all.zero = sum(deaths) == 0)
+    
+    chn_all_tmp <- chn_all %>%
+        merge(summary_dat)  %>%
+        filter(!all.zero)
+    
     # linear and quadratic time effects by age, region
     tmod8 <- glm(deaths ~ offset(logpy) + 
                      factor(reg2) * factor(agegp) + 
                      factor(reg2) * factor(cause) + 
                      factor(agegp) * factor(cause) + 
                      (year + year2)*factor(agereg2cause),
-                 data=chn_all,family=quasipoisson)
+                 data=chn_all_tmp,family=quasipoisson)
     
     # plot residuals
-    pdf("graphs/model_testing/time_diag_resids_time_by_agereg2cause.pdf",width=mywidth,height=myheight)
+    pdf(paste0(savedir,"graphs/model_testing/time_diag_resids_time_by_agereg2cause.pdf"),
+        width=mywidth,height=myheight)
     
-    plot_time_resids(tmod8,chn_all,
+    plot_time_resids(tmod8,chn_all_tmp,
                      myagecols,myreg2cols,mycausecols,
                      myagepch,myreg2pch,mycausepch,
                      myagelty,myreg2lty,mycauselty)

@@ -12,46 +12,30 @@
 
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
-
-## the following code makes rstan work on the Box server and the cluster
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
-} else if (root == "/home/students/aeschuma/") {
-    Sys.setenv(HOME=root,
-               R_USER=root,
-               R_LIBS_USER=paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"))
-    .libPaths(paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"))
-}
-
 ## load libraries
 library(mvtnorm); library(MCMCglmm); library(MASS);
 library(foreign); library(gtools);library(boot);library(parallel);
 library(scales);library(RColorBrewer);library(MGLM);
-library(tidyverse);
-if (root == "/home/students/aeschuma/") {
-    library(INLA,lib.loc=paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"));
-} else {
-    library(INLA);
-}
+library(tidyverse); library(INLA);
 
 ## define directories
 
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/motivation_sim",sep="")
+# directory for results
+savedir <- "../../../Dropbox/SRS-child-mortality-output/"
 
-# directory to save results
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/motivation_sim",sep="")
-
-## set directory
-setwd(wd)
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "results"))) {
+    dir.create(paste0(savedir, "results"))
+}
+if (!file.exists(paste0(savedir, "results/sims"))) {
+    dir.create(paste0(savedir, "results/sims"))
+}
+if (!file.exists(paste0(savedir, "results/sims/tmp"))) {
+    dir.create(paste0(savedir, "results/sims/tmp"))
+}
+if (!file.exists(paste0(savedir, "results/sims/tmp/no_correlation"))) {
+    dir.create(paste0(savedir, "results/sims/tmp/no_correlation"))
+}
 
 ## useful functions
 expit <- function(x) exp(x)/(1+exp(x))
@@ -183,7 +167,6 @@ for (exp_ind in 3:length(exposures)) {
             for (yy in 1:length(years)) {
                 dat$rw[dat$cause==rr & dat$year == years[yy]] <- randomwalk[yy]
             }
-            # plot(rw~year,data=dat[dat$cause==rr,])
         }
         
         dat$logmx <- dat$alpha
@@ -384,13 +367,12 @@ for (exp_ind in 3:length(exposures)) {
         
         if (!testing) {
             ## save results
-            setwd(savedir)
             if (!casm_only) {
                 saveRDS(results,
-                        file=paste0("results/motive_res_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_nsim_",sim_save,"_exp_",exposure,".rds"))
+                        file=paste0(savedir, "results/sims/tmp/no_correlation/motive_res_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_nsim_",sim_save,"_exp_",exposure,".rds"))
             }
             saveRDS(results_casm,
-                    file=paste0("results/motive_res_casm_iid_intonly_casm_multinom_",multinomial,"_ncause_",ncause,"_nsim_",sim_save,"_exp_",exposure,".rds"))
+                    file=paste0(savedir, "results/sims/tmp/no_correlation_motive_res_casm_iid_intonly_casm_multinom_",multinomial,"_ncause_",ncause,"_nsim_",sim_save,"_exp_",exposure,".rds"))
         }
     }
 }

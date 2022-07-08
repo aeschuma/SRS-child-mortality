@@ -4,17 +4,27 @@
 
 rm(list=ls())
 
-library(INLA); library(tidyverse); library(gridExtra); library(ggpubr);
+library(INLA); library(tidyverse); library(gridExtra); library(ggpubr); library(data.table);
 
-# directory where you save your results from '../model_fitting/model_fit_inla.R' (set these yourself)
-datadir <- "~/Dropbox/dissertation_2/cause_specific_child_mort/estimation_china/results"
-setwd(datadir)
+# directory for results
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
 
-# load data
-res <- readRDS("china_results_long.RDS")
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/residual_plots"))) {
+    dir.create(paste0(savedir, "graphs/residual_plots"))
+}
+
+# load and format our results
+res <- readRDS(paste0(savedir, "results/china_results_long.RDS"))
+res <- res %>% 
+    mutate(agegp_factor = factor(agegp_name,
+                                 levels = c("0-6d", "7-27d", "1-5m", "6-11m", "12-23m", "24-59m")))
 
 ## plot hist and density of both types of residuals
-pdf(paste0("../graphs/resid_std_compare_.pdf"),width = 10, height = 6)
+pdf(paste0(savedir, "graphs/residual_plots/resid_std_compare_.pdf"),width = 10, height = 6)
 ggplot(data = res[res$measure %in% c("resid_std_mu","resid_std_mu_sigma_e"),], 
        aes(x = value, color = measure, fill = measure)) +
   geom_histogram(aes(y=..density..), position = "identity", alpha = 0.3, linetype = "dashed",binwidth = 0.2) +
@@ -87,7 +97,7 @@ plot_resid_violin_2_strata <- function(mydata, myresid, by_var, facet_var) {
           axis.text.y = element_text(size = 16, face = "bold"),
           axis.text.x = element_blank(),
           axis.title = element_text(size = 18, face = "bold"),
-          legend.title = element_text(size = 18, face = "bold"))
+          legend.title = element_text(size = 18, face = "bold")) +
     theme_light()
 }
 
@@ -96,7 +106,7 @@ plot_resid_violin_2_strata(mydata = res,
                              myresid = "resid_std_mu", 
                              by_var = "agegp_factor", 
                              facet_var = "year_name")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_year_by_age.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_year_by_age.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 # resid over time colored by region
@@ -104,7 +114,7 @@ plot_resid_violin_2_strata(mydata = res,
                              myresid = "resid_std_mu", 
                              by_var = "reg2", 
                              facet_var = "year_name")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_year_by_reg.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_year_by_reg.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 # resid over age colored by region
@@ -112,7 +122,7 @@ plot_resid_violin_2_strata(mydata = res,
                              myresid = "resid_std_mu", 
                              by_var = "reg2", 
                              facet_var = "agegp_factor")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_age_by_reg.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_age_by_reg.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 # resid over time colored by age
@@ -120,7 +130,7 @@ plot_resid_violin_2_strata(mydata = res,
                            myresid = "resid_std_mu", 
                            by_var = "cause_name", 
                            facet_var = "year_name")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_year_by_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_year_by_cause.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 # resid over time colored by region
@@ -128,7 +138,7 @@ plot_resid_violin_2_strata(mydata = res,
                            myresid = "resid_std_mu", 
                            by_var = "cause_name", 
                            facet_var = "reg2")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_region_by_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_region_by_cause.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 # resid over age colored by region
@@ -136,7 +146,7 @@ plot_resid_violin_2_strata(mydata = res,
                            myresid = "resid_std_mu", 
                            by_var = "cause_name", 
                            facet_var = "agegp_factor")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_age_by_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_age_by_cause.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 # resid over time by age colored by reg
@@ -145,7 +155,7 @@ plot_resid_violin_3_strata(mydata = res,
                              by_var = "agegp_factor", 
                              facet_var = "year_name",
                              strata_var = "reg2")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_year_by_age_strata_reg.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_year_by_age_strata_reg.pdf"), 
        device = "pdf", width = 30, height = 10)
 
 # resid over age colored by time
@@ -154,7 +164,7 @@ plot_resid_violin_3_strata(mydata = res,
                              by_var = "agegp_factor", 
                              facet_var = "year_name",
                              strata_var = "cause_name")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_year_by_age_strata_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_year_by_age_strata_cause.pdf"), 
        device = "pdf", width = 30, height = 10)
 
 # resid over age colored by time
@@ -163,7 +173,7 @@ plot_resid_violin_3_strata(mydata = res,
                            by_var = "reg2", 
                            facet_var = "year_name",
                            strata_var = "cause_name")
-ggsave(filename = paste0("../graphs/resid_std_violin_over_year_by_reg_strata_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_violin_over_year_by_reg_strata_cause.pdf"), 
        device = "pdf", width = 30, height = 10)
 
 # plotting function for residuals by "facet_var" colored by "color_var"
@@ -199,23 +209,19 @@ plot_resid_time_2_strata(mydata = res,
                            myresid = "resid_std_mu", 
                            by_var = "reg2", 
                            facet_var = "agegp_factor")
-ggsave(filename = paste0("../graphs/resid_std_time_over_age_col_reg.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_time_over_age_col_reg.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 plot_resid_time_2_strata(mydata = res, 
                          myresid = "resid_std_mu", 
                          by_var = "cause_name", 
                          facet_var = "agegp_factor")
-ggsave(filename = paste0("../graphs/resid_std_time_over_age_col_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_time_over_age_col_cause.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 plot_resid_time_2_strata(mydata = res, 
                          myresid = "resid_std_mu", 
                          by_var = "cause_name", 
                          facet_var = "reg2")
-ggsave(filename = paste0("../graphs/resid_std_time_over_region_col_cause.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/residual_plots/resid_std_time_over_region_col_cause.pdf"), 
        device = "pdf", width = 16, height = 9)
-
-######
-## residuals on the log mortality rate scale
-

@@ -2,55 +2,40 @@
 ## 2/29/2020
 ## Fit the final model in INLA on MCHSS data, and plot results
 
+# preamble ####
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
-
-## the following code makes rstan work on the Box server
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
-}
-
 ## load libraries
-library(INLA); library(scales); library(RColorBrewer); library(tidyverse); library(ggpubr);
+library(INLA); library(scales); library(RColorBrewer); 
+library(tidyverse); library(ggpubr); library(data.table);
 library(grid); library(gridExtra); library(viridis);
 
-########################
-## code running options
-########################
-
-#####################
-## modeling options
-#####################
+# modeling options
 quantiles <- c(0.025,0.1,0.5,0.9,0.975)
 nsamples <- 1000
 
-######################
-## define directories
-######################
+# if you want to run and compare results to an older model
+#  i.e. a model with INLA default priors, which is the example currently in this code
+old_model_compare <- TRUE 
 
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/estimation_china",sep="")
+# directory for results (set this yourself if you need to change it!)
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
 
-# directory to save results
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/estimation_china",sep="")
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "results"))) {
+    dir.create(paste0(savedir, "results"))
+}
+if (!file.exists(paste0(savedir, "graphs/model_results"))) {
+    dir.create(paste0(savedir, "graphs/model_results"))
+}
 
-## set directory
-setwd(savedir)
+# load and format data ####
 
-################
-## read and format data
-################
-
-# load test data
-chn_all <- readRDS("../china_data/mchss_test_data.RDS")
+# load data
+chn_all <- as.data.table(readRDS("../../data/mchss_test_data.RDS"))
 
 ## format data
 chn_all$logpy <- log(chn_all$exposure)
@@ -95,14 +80,13 @@ chn_all$rw_sd_index[is.na(chn_all$rw_sd_index) & chn_all$reg2=="mid.urban" & chn
 chn_all$rw_sd_index[is.na(chn_all$rw_sd_index)] <- chn_all$rw_index[is.na(chn_all$rw_sd_index)]
 chn_all$rw_sd_index <- as.numeric(factor(chn_all$rw_sd_index))
 
-##########################
-## Fit model in INLA
-##########################
+# Fit model in INLA ####
 
-# prior distributions (don't use these if you wish to fit the default priors in INLA)
+## prior distributions (don't use these if you wish to fit the default priors in INLA)
 rw_prec_prior <- list(prec = list(prior = "pc.prec", param = c(1, 0.01)))
 iid_prec_prior <- list(prec = list(prior = "pc.prec", param = c(5, 0.01)))
 
+## fit model
 chn_all <- chn_all[order(chn_all$rw_index,chn_all$agereg2cause,chn_all$year),]
 mod_same_sd <- inla(deaths ~ factor(agegp)*factor(reg2) +
                         factor(agegp)*factor(cause) +
@@ -119,30 +103,48 @@ mod_same_sd <- inla(deaths ~ factor(agegp)*factor(reg2) +
                     control.compute=list(config = TRUE))
 
 ## save model results
-setwd(savedir)
-saveRDS(mod_same_sd,"results/china_results_pcpriors.RDS")
+saveRDS(mod_same_sd,
+        paste0(savedir, "results/china_results_pcpriors.RDS"))
 
-# load data (if only plotting)
-mod_same_sd <- readRDS("results/china_results_pcpriors.RDS")
+# load data (if need to do if only plotting, here for convenience)
+mod_same_sd <- readRDS(paste0(savedir, "results/china_results_pcpriors.RDS"))
 
-## load old data
-mod_same_sd_old <- readRDS("results/china_results.RDS")
+if (old_model_compare) {
+    # if we're fitting a comparison model, i.e. one with INLA default priors
+    mod_default <- inla(deaths ~ factor(agegp)*factor(reg2) +
+                            factor(agegp)*factor(cause) +
+                            factor(reg2)*factor(cause) + 
+                            f(year, replicate=rw_index, 
+                              model = "rw2", constr = TRUE) +
+                            f(factor(obs), model = "iid") +
+                            offset(logpy),
+                        family="poisson", 
+                        data=chn_all,
+                        quantiles = quantiles,
+                        control.predictor=list(compute=TRUE),
+                        control.compute=list(config = TRUE))
+    
+    ## save model results
+    saveRDS(mod_default,
+            paste0(savedir, "results/china_results_default_priors.RDS"))
+    
+    ## load old data (here for convenience if you want to not fit a model but just load an old one)
+    mod_default <- readRDS(paste0(savedir, "results/china_results_default_priors.RDS"))
+    
+    ## get preds from old data
+    samples_old <- inla.posterior.sample(nsamples,mod_default)
+    contents_old <- mod_default$misc$configs$contents
+    
+    id.pred_old <- which(contents_old$tag=="Predictor")
+    ind.pred_old <- contents_old$start[id.pred_old]-1 + (1:contents_old$length[id.pred_old])
+    
+    samples.pred_old <- lapply(samples_old, function(x) {
+        x$latent[ind.pred_old] - chn_all$logpy
+    })
+    s.pred_old <- t(matrix(unlist(samples.pred_old), byrow = T, nrow = length(samples.pred_old)))
+}
 
-## get preds from old data
-samples_old <- inla.posterior.sample(nsamples,mod_same_sd_old)
-contents_old <- mod_same_sd_old$misc$configs$contents
-
-id.pred_old <- which(contents_old$tag=="Predictor")
-ind.pred_old <- contents_old$start[id.pred_old]-1 + (1:contents_old$length[id.pred_old])
-
-samples.pred_old <- lapply(samples_old, function(x) {
-    x$latent[ind.pred_old] - chn_all$logpy
-})
-s.pred_old <- t(matrix(unlist(samples.pred_old), byrow = T, nrow = length(samples.pred_old)))
-
-##################
-## Various posterior predictions
-##################
+# get posterior predictions ####
 
 ## predictions for log mortaity rate
 samples <- inla.posterior.sample(nsamples,mod_same_sd)
@@ -220,6 +222,8 @@ for (i in 1:nsamples) {
     }
 }
 
+# format and save posterior results ####
+
 ## make results data frame
 results <- chn_all
 
@@ -243,23 +247,28 @@ results$pred_mx_pois_m <- apply(s.pred.pois,1,median)
 results$pred_mx_pois_l <- apply(s.pred.pois,1,quantile,0.1)
 results$pred_mx_pois_u <- apply(s.pred.pois,1,quantile,0.9)
 
-# pred log mortality rates from old non-pc prior model
-results$pred_old_m <- apply(s.pred_old,1,median)
-results$pred_old_l <- apply(s.pred_old,1,quantile,0.1)
-results$pred_old_u <- apply(s.pred_old,1,quantile,0.9)
+if (old_model_compare) {
+    
+    # create a new dataset
+    results_old <- results
+    
+    # pred log mortality rates from old non-pc prior model
+    results_old$pred_old_m <- apply(s.pred_old,1,median)
+    results_old$pred_old_l <- apply(s.pred_old,1,quantile,0.1)
+    results_old$pred_old_u <- apply(s.pred_old,1,quantile,0.9)
+    
+    ## comparison of old non pc prior and new models
+    results_old$pred_difference_old_new_m <- results_old$pred_m - results_old$pred_old_m
+}
 
-## comparison of old non pc prior and new models
-results$pred_difference_old_new_m <- results$pred_m - results$pred_old_m
-
-#-------------
 # format data for saving
-#-------------
 
 ## age in days variable
 results$agegp_days <- as.numeric(as.character(factor(results$agegp,labels=c(3,18,90,255,540,1260))))
 
 ## change level order for age
-results$agegp_name <- factor(results$agegp_name, levels = c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m"))
+results$agegp_name <- factor(results$agegp_name, 
+                             levels = c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m"))
 
 # rename regions in order to plot nicer
 results$reg2 <- gsub("\\."," ",results$reg2)
@@ -269,10 +278,36 @@ results <- results[order(results$reg2,results$agegp,results$year,results$cause),
 results$agegp_factor <- factor(results$agegp, labels = as.character(unique(results$agegp_name)))
 
 ## save results
-saveRDS(results,"results/china_results_wide.RDS")
+saveRDS(results, paste0(savedir, "results/china_results_wide.RDS"))
 
-## load results (if only plotting)
-results <- readRDS("results/china_results_wide.RDS")
+if (old_model_compare) {
+    # format data for saving
+    
+    ## age in days variable
+    results_old$agegp_days <- as.numeric(as.character(factor(results_old$agegp,labels=c(3,18,90,255,540,1260))))
+    
+    ## change level order for age
+    results_old$agegp_name <- factor(results_old$agegp_name, 
+                                 levels = c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m"))
+    
+    # rename regions in order to plot nicer
+    results_old$reg2 <- gsub("\\."," ",results_old$reg2)
+    
+    # change age group labels
+    results_old <- results_old[order(results_old$reg2,results_old$agegp,results_old$year,results_old$cause),]
+    results_old$agegp_factor <- factor(results_old$agegp, labels = as.character(unique(results_old$agegp_name)))
+    
+    ## save results
+    saveRDS(results_old, paste0(savedir, "results/china_results_old_wide.RDS"))
+    
+    ## load results (if only plotting, here for convenience)
+    results_old <- readRDS(paste0(savedir, "results/china_results_old_wide.RDS"))
+}
+    
+# plotting results ####
+
+## load results (if only plotting, here for convenience)
+results <- readRDS(paste0(savedir, "results/china_results_wide.RDS"))
 
 # make into a tibble for making long dataset for plotting
 res <- as_tibble(results)
@@ -280,14 +315,12 @@ res <- as_tibble(results)
 # we are pivoting long to get a tidy dataset for easier plotting,
 # and also getting rid of some unnecessary columns
 res <- res %>% 
-    pivot_longer(cols  = c("deaths", "exposure_old", "mx", "deaths_raw",
-                           "exposure", "exposure_diff", "logmx", "logpy",
+    pivot_longer(cols  = c("deaths", "mx",
+                           "exposure", "logmx", "logpy",
                            "alpha_m", "alpha_l", "alpha_u", 
                            "fe_rw_m", "fe_rw_l", "fe_rw_u", 
                            "pred_m", "pred_l", "pred_u", 
-                           "pred_mx_pois_m", "pred_mx_pois_l", "pred_mx_pois_u", 
-                           "pred_old_m", "pred_old_l", "pred_old_u", 
-                           "pred_difference_old_new_m"),
+                           "pred_mx_pois_m", "pred_mx_pois_l", "pred_mx_pois_u"),
                  names_to = "measure",
                  values_to = "value") %>%
     select("year", "agegp", "reg2", "cause", 
@@ -315,28 +348,24 @@ res <- res %>%
     pivot_wider(names_from = measure, values_from = value) %>%
     mutate(resid_std_mu = (deaths - exp(fe_rw_m + logpy))/sqrt(exp(fe_rw_m + logpy))) %>%
     mutate(resid_std_mu_sigma_e = (deaths - exp(fe_rw_m + logpy))/sqrt((exp(fe_rw_m + logpy)*exp(sigma_e^2)))) %>%
-    pivot_longer(cols = c("deaths", "exposure_old", "mx", "deaths_raw",
-                          "exposure", "exposure_diff", "logmx", "logpy",
+    pivot_longer(cols = c("deaths", "mx",
+                          "exposure", "logmx", "logpy",
                           "alpha_m", "alpha_l", "alpha_u", 
                           "fe_rw_m", "fe_rw_l", "fe_rw_u", 
                           "pred_m", "pred_l", "pred_u", 
-                          "pred_mx_pois_m", "pred_mx_pois_l", "pred_mx_pois_u", 
-                          "pred_old_m", "pred_old_l", "pred_old_u", 
-                          "pred_difference_old_new_m",
+                          "pred_mx_pois_m", "pred_mx_pois_l", "pred_mx_pois_u",
                           "pred_csmf_m",
                           "resid_std_mu","resid_std_mu_sigma_e"), 
                  names_to = "measure", values_to = "value")
 
 # save long dataset for some plots
-saveRDS(res,"results/china_results_long.RDS")
+saveRDS(res, paste0(savedir, "results/china_results_long.RDS"))
 
 results <- as.data.frame(results)
 
-##########
-## plot all log mortality rate results
-##########
+## plot all log mortality rate results ####
 
-## plotting function
+### plotting function ####
 plotfun_mort <- function(results,data_var,
                          cause,cause_name,
                          region,
@@ -475,6 +504,7 @@ plotfun_mort <- function(results,data_var,
     }
 }
 
+### make plots ####
 for (pp in c(TRUE,FALSE)) {
     ## testing
     # pp <- TRUE
@@ -486,7 +516,7 @@ for (pp in c(TRUE,FALSE)) {
     } 
 
     ## start pdf
-    pdf(paste0("graphs/pub_",pp,"_logmx_ci_chn_inla_pcpriors_",Sys.Date(),".pdf"), 
+    pdf(paste0(savedir, "graphs/model_results/pub_",pp,"_logmx_ci_chn_inla_pcpriors_",Sys.Date(),".pdf"), 
         width=16,height=9)
     
     ## loop through regions and causes
@@ -502,19 +532,19 @@ for (pp in c(TRUE,FALSE)) {
             
             # make plot
             cat(paste(r,c,"\n",sep="; ")); flush.console()
-            plotfun_mort(results,"logmx",cause=c,cause_name=name_of_cause,region=r,strat_var="agegp",by_var="year",pub=pp)
+            plotfun_mort(results,"logmx",
+                         cause=c, cause_name=name_of_cause, region=r,
+                         strat_var="agegp",by_var="year",
+                         pub=pp)
         }
     }
     
     dev.off()
 }
 
-#################
-## Predicted death counts with additional Poisson variation
-#################
-
-pdf(paste0("graphs/mx_pi_chn_inla_pcpriors_",Sys.Date(),".pdf"), 
-    width=16,height=8)
+## plot predicted death counts with additional Poisson variation ####
+pdf(paste0(savedir, "graphs/model_results/mx_pi_chn_inla_pcpriors_",Sys.Date(),".pdf"), 
+    width=16,height=9)
 
 for (r in unique(results$reg2)) {
     for (c in unique(results$cause_name)) {
@@ -543,173 +573,181 @@ for (r in unique(results$reg2)) {
 
 dev.off()
 
-###############
-## plot non-pc prior estimates
-###############
-
-## plotting function
-plotfun_mort_old <- function(results,data_var,
+if (old_model_compare)  {
+    
+    results_old <- as.data.frame(results_old)
+    
+    ## plot old predictions (with IID REs), NOT THE FINAL ESTIMATES!! ####
+    plotfun_mort_old <- function(results,data_var,
                              cause,cause_name,
                              region,
                              strat_var="agegp",by_var="year",
                              pub=FALSE) {
-    
-    ## for testing
-    # cause <- "nCH16"
-    # cause_name <- "other non-communicable"
-    # region <- "east urban"
-    # strat_var <- "agegp"
-    # by_var <- "year"
-    # data_var <- "logmx"
-    
-    ## plotting size parameters
-    if (pub) {
-        cex.main <- 2.1
-        cex.lab <- 2.2
-        cex.axis <- 1.9
-        cex.ylab <- cex.axis
-        cex.legend <- 1.8
-        cex <- 1.5
-        cex.pt <- 1.7
-    } else {
-        cex.main <- 1.5
-        cex.lab <- 1.5
-        cex.axis <- 1.5
-        cex.ylab <- cex.axis
-        cex.legend <- 1.5
-        cex <- 1.25
-        cex.pt <- 1.5
-    }
-    
-    ## set colors
-    mycols <- brewer.pal(4,"Dark2")
-    
-    ## set plotting window
-    if (pub) margins <- c(3.5,4.5,2,1) else margins <- c(5,4,4,1)+0.1
-    par(mfrow=c(ceiling(length(unique(results[,strat_var]))/ceiling(sqrt(length(unique(results[,strat_var]))))),
-                ceiling(sqrt(length(unique(results[,strat_var]))))),
-        mar = margins)
-    i <- 0
-    
-    if (strat_var=="year") strat_var_names <- c(1996:2015) else strat_var_names <- c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m")
-    
-    for (sv in unique(results[,strat_var])) {
         
-        ## testing
-        # sv <- 1
+        ## for testing
+        # cause <- "nCH16"
+        # cause_name <- "other non-communicable"
+        # region <- "east urban"
+        # strat_var <- "agegp"
+        # by_var <- "year"
+        # data_var <- "logmx"
+        # pub <- FALSE
         
-        if (strat_var == "agegp" & sv %in% c(4,5,6) & cause %in% c("nCH10","nCH11")) next
-        
-        i <- i+1
-        
-        ## index for what to plot
-        index <- results$reg2==region & results[,strat_var]==sv & results$cause==cause
-        
-        ## indicator of 0 mortality points for plotting
-        pch_plot <- ifelse(results[index,data_var] == -Inf,0,19)
-        
-        ## so we can plot 0 mortality points
-        tmp_results <- results
-        if (max(tmp_results[index,data_var]) == -Inf) {
-            tmp_results[index & tmp_results[,data_var] == -Inf,data_var] <- min(tmp_results[index,"pred_l"]) - 0.25
+        ## plotting size parameters
+        if (pub) {
+            cex.main <- 2.1
+            cex.lab <- 2.2
+            cex.axis <- 1.9
+            cex.ylab <- cex.axis
+            cex.legend <- 1.8
+            cex <- 1.5
+            cex.pt <- 1.7
         } else {
-            tmp_results[index & tmp_results[,data_var] == -Inf,data_var] <- min(c(tmp_results[index & tmp_results[,data_var] != -Inf,data_var],
-                                                                                  tmp_results[index,"pred_l"])) - 0.25
+            cex.main <- 1.5
+            cex.lab <- 1.5
+            cex.axis <- 1.5
+            cex.ylab <- cex.axis
+            cex.legend <- 1.5
+            cex <- 1.25
+            cex.pt <- 1.5
         }
         
-        ## plot title
-        if (pub) {
-            plot_title <- strat_var_names[which(unique(results[,strat_var])==sv)]
-        } else {
-            if (i==1) {
-                plot_title <- paste(paste(region,cause_name,sep="; "),"\n",
-                                    strat_var_names[which(unique(results[,strat_var])==sv)],
-                                    sep="")  
+        ## set colors
+        mycols <- brewer.pal(4,"Dark2")
+        
+        ## set plotting window
+        if (pub) margins <- c(3.5,4.5,2,1) else margins <- c(3.5,4.5,4,1)
+        par(mfrow=c(ceiling(length(unique(results[,strat_var]))/ceiling(sqrt(length(unique(results[,strat_var]))))),
+                    ceiling(sqrt(length(unique(results[,strat_var]))))),
+            mar = margins)
+        i <- 0
+        
+        if (strat_var=="year") strat_var_names <- c(1996:2015) else strat_var_names <- c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m")
+        
+        for (sv in unique(results[,strat_var])) {
+            
+            ## testing
+            # sv <- 1
+            
+            if (strat_var == "agegp" & sv %in% c(4,5,6) & cause %in% c("nCH10","nCH11")) next
+            
+            i <- i+1
+            
+            ## index for what to plot
+            index <- results$reg2==region & results[,strat_var]==sv & results$cause==cause
+            
+            ## indicator of 0 mortality points for plotting
+            pch_plot <- ifelse(results[index,data_var] == -Inf,0,19)
+            
+            ## so we can plot 0 mortality points
+            tmp_results <- results
+            if (max(tmp_results[index,data_var]) == -Inf) {
+                tmp_results[index & tmp_results[,data_var] == -Inf,data_var] <- min(tmp_results[index,"pred_old_l"]) - 0.25
             } else {
-                plot_title <- paste("\n",
-                                    strat_var_names[which(unique(results[,strat_var])==sv)],
-                                    sep="")   
+                tmp_results[index & tmp_results[,data_var] == -Inf,data_var] <- min(c(tmp_results[index & tmp_results[,data_var] != -Inf,data_var],
+                                                                                      tmp_results[index,"pred_old_l"])) - 0.25
+            }
+            
+            ## plot title
+            if (pub) {
+                plot_title <- strat_var_names[which(unique(results[,strat_var])==sv)]
+            } else {
+                if (i==1) {
+                    plot_title <- paste(paste(region,cause_name,sep="; "),"\n",
+                                        strat_var_names[which(unique(results[,strat_var])==sv)],
+                                        sep="")  
+                } else {
+                    plot_title <- paste("\n",
+                                        strat_var_names[which(unique(results[,strat_var])==sv)],
+                                        sep="")   
+                }
+            }
+            
+            ## x axis to plot at
+            if (by_var == "agegp") by_var_at <- results[index,"agegp_days"] else if (by_var == "year") by_var_at <- results[index,"year"]
+            
+            ## labels
+            if (data_var == "logmx") ylabel <- "log(mortality rate)" else ylabel <- "mortality rate"
+            
+            if (i %in% c(1,4)) ylabel <- ylabel else ylabel <- ""
+            ## plot mortality across byvar
+            plot(tmp_results[index,"pred_old_m"]~by_var_at,type="l",lwd=2,lty=2,
+                 ylim=range(c(results[index,"pred_old_l"],
+                              results[index,"pred_old_u"],
+                              tmp_results[index,data_var])),
+                 main=plot_title,
+                 xlab="",ylab=ylabel,
+                 col=mycols[2],
+                 xaxt="n",
+                 cex=cex,
+                 cex.main=cex.main,
+                 cex.axis=cex.axis,
+                 cex.lab=cex.lab)
+            
+            if (by_var=="year") { 
+                axislabels <- c(as.character(96:99),paste0("0",0:9),as.character(10:15))
+            } else {
+                axislabels <- c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m")
+            }
+            axis(1,at=by_var_at,labels=NA)
+            text(x=by_var_at, y=par()$usr[3]-0.04*(par()$usr[4]-par()$usr[3]),
+                 labels=axislabels[1:length(by_var_at)], srt=45, adj=1, xpd=TRUE,
+                 cex=cex.ylab)
+            polygon(c(by_var_at,rev(by_var_at)),c(results[index,"pred_old_l"],rev(results[index,"pred_old_u"])),
+                    col=alpha(mycols[2],0.3),border=NA)
+            points(tmp_results[index,data_var]~by_var_at,pch=pch_plot,col=alpha(mycols[4],0.75),cex=cex.pt)
+            if (i == 1) {
+                legend("topright",c("Preds (FE + RW + IID)","observed data"),
+                       fill=rep(NA,2),border=c(NA,NA),lwd=c(2,NA),
+                       pch=c(NA,19),lty=c(1,NA),col=mycols[c(2, 4)],cex=cex.legend,
+                       y.intersp=0.9)
+                legend("topright",c("",""),lwd=c(NA,NA),
+                       col=c(alpha(mycols[2],0.3),NA),border=c(NA,NA),
+                       pch = rep(15,2),pt.cex = rep(3.85, 2),lty=c(NA,NA),cex=cex.legend,
+                       y.intersp=0.9,x.intersp=8.38,xjust = 0,bty="n")
+            }
+        }
+    }
+    
+    ### make plots  ####
+    for (pp in c(TRUE,FALSE)) {
+        ## testing
+        # pp <- TRUE
+        
+        if (pp) {
+            cat(paste("PUBLICATION VERSION:\n\n")); flush.console()
+        } else {
+            cat(paste("NON-PUBLICATION VERSION:\n\n")); flush.console()
+        } 
+        
+        
+        ## start pdf
+        # NOTE: Change the filename as needed
+        pdf(paste0(savedir, "graphs/model_results/pub_",pp,"_logmx_ci_chn_inla_default_priors_preds_only_",Sys.Date(),".pdf"), 
+            width=16,height=9)
+        
+        ## loop through regions and causes
+        for (r in unique(results_old$reg2)) {
+            for (c in unique(results_old$cause)) {
+                
+                ## testing
+                # r <- unique(results_old$reg2)[1]
+                # c <- unique(results_old$cause)[1]
+                
+                # cause name
+                name_of_cause <- as.character(results_old$cause_name[results_old$cause==c][1])
+                
+                # make plot
+                cat(paste(r,c,"\n",sep="; ")); flush.console()
+                plotfun_mort_old(results_old,"logmx",
+                             cause=c, cause_name=name_of_cause, region=r,
+                             strat_var="agegp",by_var="year",
+                             pub=pp)
             }
         }
         
-        ## x axis to plot at
-        if (by_var == "agegp") by_var_at <- results[index,"agegp_days"] else if (by_var == "year") by_var_at <- results[index,"year"]
+        dev.off()
         
-        ## labels
-        if (data_var == "logmx") ylabel <- "log(mortality rate)" else ylabel <- "mortality rate"
-        
-        if (i %in% c(1,4)) ylabel <- ylabel else ylabel <- ""
-        ## plot mortality across byvar
-        plot(tmp_results[index,"pred_old_m"]~by_var_at,type="l",lwd=2,
-             ylim=range(c(results[index,"pred_old_l"],
-                          results[index,"pred_old_u"],
-                          tmp_results[index,data_var])),
-             main=plot_title,
-             xlab="",ylab=ylabel,
-             col=mycols[1],
-             xaxt="n",
-             cex=cex,
-             cex.main=cex.main,
-             cex.axis=cex.axis,
-             cex.lab=cex.lab)
-        
-        if (by_var=="year") { 
-            axislabels <- c(as.character(96:99),paste0("0",0:9),as.character(10:15))
-        } else {
-            axislabels <- c("0-6d","7-27d","1-5m","6-11m","12-23m","24-59m")
-        }
-        axis(1,at=by_var_at,labels=NA)
-        text(x=by_var_at, y=par()$usr[3]-0.04*(par()$usr[4]-par()$usr[3]),
-             labels=axislabels[1:length(by_var_at)], srt=45, adj=1, xpd=TRUE,
-             cex=cex.ylab)
-        polygon(c(by_var_at,rev(by_var_at)),c(results[index,"pred_old_l"],rev(results[index,"pred_old_u"])),col=alpha(mycols[1],0.3),border=NA)
-        points(tmp_results[index,data_var]~by_var_at,pch=pch_plot,col=alpha(mycols[4],0.75),cex=cex.pt)
-        if (i == 1) {
-            legend("topright",c("Final estimates","observed data"),
-                   fill=rep(NA,2),border=c(NA,NA),lwd=c(2,NA),
-                   pch=c(NA,19),lty=c(1,NA),col=c(mycols[1],mycols[4]),cex=cex.legend,
-                   y.intersp=0.9)
-            legend("topright",c("",""),lwd=c(NA,NA),
-                   col=c(alpha(mycols[1],0.3),NA),border=c(NA,NA),
-                   pch = rep(15,2),pt.cex = rep(4, 2),lty=c(NA,NA),cex=cex.legend,
-                   y.intersp=0.9,x.intersp=8.42,xjust = 0,bty="n")
-        }
-    }
-}
-
-for (pp in c(TRUE,FALSE)) {
-    ## testing
-    # pp <- TRUE
-    
-    if (pp) {
-        cat(paste("PUBLICATION VERSION:\n\n")); flush.console()
-    } else {
-        cat(paste("NON-PUBLICATION VERSION:\n\n")); flush.console()
-    } 
-    
-
-    ## start pdf
-    pdf(paste0("graphs/pub_",pp,"_logmx_ci_chn_inla_defaultpriors_",Sys.Date(),".pdf"), 
-        width=16,height=9)
-    
-    ## loop through regions and causes
-    for (r in unique(results$reg2)) {
-        for (c in unique(results$cause)) {
-            
-            ## testing
-            # r <- unique(results$reg2)[1]
-            # c <- unique(results$cause)[1]
-            
-            # cause name
-            name_of_cause <- as.character(results$cause_name[results$cause==c][1])
-            
-            # make plot
-            cat(paste(r,c,"\n",sep="; ")); flush.console()
-            plotfun_mort_old(results,"logmx",cause=c,cause_name=name_of_cause,region=r,
-                             strat_var="agegp",by_var="year",pub=pp)
-        }
     }
     
-    dev.off()
-
 }

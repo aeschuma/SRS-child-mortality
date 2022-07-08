@@ -2,21 +2,29 @@
 # 2/14/2020
 # Compare our CSMF estimates to He et al (2017) and the observed CSMFs
 
+# preamble ####
 rm(list=ls())
 
-library(INLA); library(tidyverse); library(gridExtra); 
+library(INLA); library(tidyverse); library(gridExtra); library(data.table);
 library(ggpubr); library(haven); library(cowplot); library(haven);
 
-# directory where you save your results from '../model_fitting/model_fit_inla.R' (set these yourself)
-datadir <- "~/Dropbox/dissertation_2/cause_specific_child_mort/estimation_china/results"
-setwd(datadir)
+# directory for results
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
+
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/he_compare"))) {
+    dir.create(paste0(savedir, "graphs/he_compare"))
+}
 
 # load our results
-mod_inla <- readRDS("china_results_pcpriors.RDS")
-res <- readRDS("china_results_long.RDS")
+mod_inla <- readRDS(paste0(savedir, "results/china_results_pcpriors.RDS"))
+res <- readRDS(paste0(savedir, "results/china_results_long.RDS"))
 
 # load He et al results (email Li Liu lliu26@jhu.edu for access)
-he_res <- as_tibble(read_stata("../../china_data/China_childcod_subnational_1996-2015_wide.dta"))
+he_res_long <- readRDS("../../data/he_2017_test_data.RDS")
 
 # causes that are shared between He and us
 common_causes <- c("prematurity", 
@@ -25,33 +33,6 @@ common_causes <- c("prematurity",
                    "diarrhea", 
                    "congenital anomalies",
                    "acute resp. infections")
-
-# format He data
-he_res_long <- he_res %>% 
-  select(year, reg, res, starts_with("nn"), starts_with("pn")) %>% 
-  rename(nn_meningitissepsis = nn_men_sep) %>%
-  mutate(year = as.integer(year)) %>%
-  mutate(reg = recode(reg, 
-                      Central = "mid",
-                      Eastern = "east",
-                      Western = "west")) %>%
-  unite(reg2, reg, res, sep = " ") %>%
-  pivot_longer(cols = c(starts_with("nn"), starts_with("pn")),
-               names_to = c("age_agg", "cause_name"),
-               names_pattern = "(.*)_(.*)",
-               values_to = "deaths_he") %>%
-  mutate(cause_name = recode(cause_name, 
-                             other = "other non-communicable",
-                             congenital = "congenital anomalies",
-                             injury = "injuries",
-                             intrapartum = "birth asphyxia/trauma",
-                             pneumonia = "acute resp. infections",
-                             preterm = "prematurity",
-                             pneumonia = "acute resp. infections")) %>%
-  group_by(year, age_agg, reg2) %>%
-  mutate(csmf_he = deaths_he/sum(deaths_he)) %>%
-  filter(cause_name %in% common_causes) %>%
-  select(year, reg2, age_agg, cause_name, csmf_he)
 
 # aggregate our results to nn and pnn so we can compare death counts
 res_agg <- res %>%
@@ -71,6 +52,9 @@ res_agg <- res %>%
          csmf = deaths_agg/sum(deaths_agg)) %>%
   filter(cause_name %in% common_causes) %>%
   select(year, age_agg, reg2, cause_name, csmf, csmf_est)
+
+# for He 2017 comparison data, select only causes in common 
+he_res_long <- he_res_long %>% filter(cause_name %in% common_causes)
 
 allres <- full_join(res_agg, he_res_long, by = c("year","age_agg","reg2","cause_name"))
 
@@ -114,7 +98,7 @@ myplots <- plot_grid(p1 + theme(legend.position="none"),
 mylegend <- get_legend(p1 + theme(legend.position="bottom",
                                   legend.box.margin = margin(0, 0, 0, 12)))
 plot_grid(myplots, mylegend, nrow = 2, rel_heights = c(3,0.5))
-ggsave(filename = paste0("../graphs/he_csmf_compare.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/he_compare/he_csmf_compare.pdf"), 
        device = "pdf",width = 13, height = 4)
 
 # plot csmfs over time function
@@ -149,5 +133,5 @@ prow <- plot_grid(g_csmf + theme(legend.position="none"),
 legend <- get_legend(g_csmf + theme(legend.box.margin = margin(0, 0, 0, 12),
                                     legend.position="bottom"))
 plot_grid(prow, legend, nrow = 2, rel_heights = c(3,0.5))
-ggsave(filename = paste0("../graphs/cause_fractions_emp_est_he_compare.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/he_compare/cause_fractions_emp_est_he_compare.pdf"), 
        device = "pdf",width = 12, height = 7)

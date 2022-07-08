@@ -6,13 +6,23 @@ rm(list=ls())
 
 library(INLA); library(tidyverse); library(gridExtra); library(ggpubr);
 
-# directory where you save your results from '../model_fitting/model_fit_inla.R' (set these yourself)
-datadir <- "~/Dropbox/dissertation_2/cause_specific_child_mort/estimation_china/results"
-setwd(datadir)
+# directory for results
+savedir <- "../../../../Dropbox/SRS-child-mortality-output/"
 
-# load data
-mod_inla <- readRDS("china_results_pcpriors.RDS")
-res <- readRDS("china_results_long.RDS")
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/csmf_plots"))) {
+    dir.create(paste0(savedir, "graphs/csmf_plots"))
+}
+
+# load/format our results
+mod_inla <- readRDS(paste0(savedir, "results/china_results_pcpriors.RDS"))
+res <- readRDS(paste0(savedir, "results/china_results_long.RDS"))
+res <- res %>% 
+    mutate(agegp_factor = factor(agegp_name,
+                                 levels = c("0-6d", "7-27d", "1-5m", "6-11m", "12-23m", "24-59m")))
 
 # plot cause fractions
 ggplot(data = res[res$measure == "pred_csmf_m",], 
@@ -25,7 +35,7 @@ ggplot(data = res[res$measure == "pred_csmf_m",],
   labs(fill = "cause") +
   # theme(strip.placement = "outside") +
   theme_light()
-ggsave(filename = paste0("../graphs/cause_fractions_pcpriors_all.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/csmf_plots/cause_fractions_pcpriors_all.pdf"), 
        device = "pdf", width = 16, height = 9)
 
 ## for publication
@@ -50,5 +60,5 @@ ggplot(data = res[res$measure == "pred_csmf_m",],
         strip.background = element_blank(),
         panel.border = element_rect(colour = "black")) +
   guides(fill = guide_legend(label.position = "bottom"))
-ggsave(filename = paste0("../graphs/cause_fractions_pcpriors_all_pub.pdf"), 
+ggsave(filename = paste0(savedir, "graphs/csmf_plots/cause_fractions_pcpriors_all_pub.pdf"), 
        device = "pdf", width = 9, height = 9)

@@ -11,35 +11,23 @@
 
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
-
-## the following code makes rstan work on the Box server
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
-} else if (root == "/home/students/aeschuma/") {
-    Sys.setenv(HOME=root,
-               R_USER=root,
-               R_LIBS_USER=paste0(root,"R/x86_64-pc-linux-gnu-library/3.5"))
-    .libPaths(paste0(root,"R/x86_64-pc-linux-gnu-library/3.5"))
-}
-
 ## load libraries
 library(scales); library(RColorBrewer); library(ggplot2); library(cowplot);
 
-## define directories
+# directory for results
+savedir <- "../../../Dropbox/SRS-child-mortality-output/"
 
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/motivation_sim",sep="")
-
-# directory to save results
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/motivation_sim",sep="")
+# create folders to store results if necessary
+# note: the results folders were created in the simulation code already
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/sims"))) {
+    dir.create(paste0(savedir, "graphs/sims"))
+}
+if (!file.exists(paste0(savedir, "graphs/sims/no_correlation"))) {
+    dir.create(paste0(savedir, "graphs/sims/no_correlation"))
+}
 
 ## parameters
 multinomial <- FALSE
@@ -53,12 +41,9 @@ nexposures <- length(exposures)
 results_2stage <- array(data=NA,dim=c(nexposures,nsim,4))
 results_casm <- array(data=NA,dim=c(nexposures,nsim,4))
 
-## set directory
-setwd(paste(savedir,"results",sep="/"))
-
 ## load files
-fl_casm <- grep(paste0("motive_res_casm_iid_intonly_casm_multinom_",multinomial,"_ncause_",ncause),list.files(),value=T)
-fl_2stage <- grep(paste0("motive_res_iid_intonly_multinom_",multinomial,"_ncause_",ncause),list.files(),value=T)
+fl_casm <- grep(paste0(savedir, "results/sims/tmp/no_correlation/motive_res_casm_iid_intonly_casm_multinom_",multinomial,"_ncause_",ncause),list.files(),value=T)
+fl_2stage <- grep(paste0(savedir, "results/sims/tmp/no_correlation/motive_res_iid_intonly_multinom_",multinomial,"_ncause_",ncause),list.files(),value=T)
 
 for (i in 1:length(fl_2stage)) {
 
@@ -83,22 +68,24 @@ for (i in 1:length(fl_2stage)) {
 }
 
 ## save results
-saveRDS(results_2stage,file=paste0("res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_2stage_",Sys.Date(),
+saveRDS(results_2stage,file=paste0(savedir, "results/sims/res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_2stage_",Sys.Date(),
                                    "_nsim_",nsim,"_max_exp_",max(exposures),"_nstrata_",nstrata,".rds"))
-saveRDS(results_casm,file=paste0("res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_rw_casm_",Sys.Date(),
+saveRDS(results_casm,file=paste0(savedir, "results/sims/res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_rw_casm_",Sys.Date(),
                                  "_nsim_",nsim,"_max_exp_",max(exposures),"_nstrata_",nstrata,".rds"))
-if (file.exists(paste0("res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_2stage_",Sys.Date(),
+
+# delete all temporary sim data (to save space)
+if (file.exists(paste0(savedir, "results/sims/res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_2stage_",Sys.Date(),
                        "_nsim_",nsim,"_max_exp_",max(exposures),"_nstrata_",nstrata,".rds"))) {
     unlink(unlist(fl_2stage))
 }
-if (file.exists(paste0("res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_rw_casm_",Sys.Date(),
+if (file.exists(paste0(savedir, "results/sims/res_motive_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_rw_casm_",Sys.Date(),
                        "_nsim_",nsim,"_max_exp_",max(exposures),"_nstrata_",nstrata,".rds"))) {
     unlink(unlist(fl_casm))
 }
 
-# load results (only if we're redoing the plots)
-results_2stage <- readRDS("res_motive_iid_intonly_multinom_FALSE_ncause_2_2stage_2020-01-28_ncause_2_nsim_100_max_exp_1e+05_nstrata_720.rds")
-results_casm <- readRDS("res_motive_iid_intonly_multinom_FALSE_ncause_2_rw_casm_2020-01-28_ncause_2_nsim_100_max_exp_1e+05_nstrata_720.rds")
+# load results (this is just here for convenience---only necessary if we're redoing the plots)
+# results_2stage <- readRDS(paste0(savedir, "results/sims/res_motive_iid_intonly_multinom_FALSE_ncause_2_2stage_2020-01-28_ncause_2_nsim_100_max_exp_1e+05_nstrata_720.rds"))
+# results_casm <- readRDS(paste0(savedir, "results/sims/res_motive_iid_intonly_multinom_FALSE_ncause_2_rw_casm_2020-01-28_ncause_2_nsim_100_max_exp_1e+05_nstrata_720.rds"))
 
 # aggregate 
 res_2stage_agg <- apply(results_2stage,c(1,3),mean,na.rm=T)
@@ -149,7 +136,7 @@ prow <- plot_grid(plot.list[[1]] + theme(legend.position="none"),
                   labels = "AUTO", nrow = 1)
 legend <- get_legend(plot.list[[1]] + theme(legend.box.margin = margin(0, 0, 0, 12)))
 plot_grid(prow, legend, rel_widths = c(3, .4))
-ggsave(paste0("../graphs/res_motive_iid_intonly_multinomial_",multinomial,"_ncause_",ncause,"_nsim_",nsim,"_max_exposure_",max(exposures),"_nstrata_",nstrata,".pdf"),
+ggsave(paste0(savedir, "graphs/sims/no_correlation/res_motive_iid_intonly_multinomial_",multinomial,"_ncause_",ncause,"_nsim_",nsim,"_max_exposure_",max(exposures),"_nstrata_",nstrata,".pdf"),
        width=11,height=3)
 
 ## plot with no bias
@@ -158,5 +145,5 @@ prow2 <- plot_grid(plot.list[[3]] + theme(legend.position="none"),
                    labels = "AUTO", nrow = 1)
 legend2 <- get_legend(plot.list[[3]] + theme(legend.box.margin = margin(0, 0, 0, 12)))
 plot_grid(prow2, legend2, rel_widths = c(2, .3))
-ggsave(paste0("../graphs/res_motive_nobias_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_nsim_",nsim,"_max_exposure_",max(exposures),"_nstrata_",nstrata,".pdf"),
+ggsave(paste0(savedir, "graphs/sims/no_correlation/res_motive_nobias_iid_intonly_multinom_",multinomial,"_ncause_",ncause,"_nsim_",nsim,"_max_exposure_",max(exposures),"_nstrata_",nstrata,".pdf"),
        width=12,height=3)

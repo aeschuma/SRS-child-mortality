@@ -11,35 +11,25 @@
 
 rm(list=ls())
 
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
-
-## the following code makes rstan work on the Box server
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
-} else if (root == "/home/students/aeschuma/") {
-    Sys.setenv(HOME=root,
-               R_USER=root,
-               R_LIBS_USER=paste0(root,"R/x86_64-pc-linux-gnu-library/3.5"))
-    .libPaths(paste0(root,"R/x86_64-pc-linux-gnu-library/3.5"))
-}
-
 ## load libraries
 library(scales); library(RColorBrewer); library(ggplot2); library(cowplot);
 
 ## define directories
 
-# working directory for code
-wd <- paste(root,"Desktop/dissertation/motivation_sim",sep="")
+# directory for results
+savedir <- "../../../Dropbox/SRS-child-mortality-output/"
 
-# directory to save results
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/motivation_sim",sep="")
+# create folders to store results if necessary
+# note: the results folders were created in the simulation code already
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/sims"))) {
+    dir.create(paste0(savedir, "graphs/sims"))
+}
+if (!file.exists(paste0(savedir, "graphs/sims/correlation"))) {
+    dir.create(paste0(savedir, "graphs/sims/correlation"))
+}
 
 ## parameters
 intercept_only <- FALSE
@@ -122,7 +112,8 @@ for (i in 1:length(fl_2stage)) {
 }
 
 ## save results
-saveRDS(results_2stage,file=paste0("res_corr_motive_2stage_",Sys.Date(),
+saveRDS(results_2stage,file=paste0(savedir,
+                                   "results/sims/res_corr_motive_2stage_",Sys.Date(),
                                    "_intonly_",intercept_only,
                                    "_lineartime_",linear_time,
                                    "_timerw_",time_rw,
@@ -131,7 +122,8 @@ saveRDS(results_2stage,file=paste0("res_corr_motive_2stage_",Sys.Date(),
                                    "_ncause_",ncause,
                                    "_nsim_",nsim,
                                    ".rds"))
-saveRDS(results_casm,file=paste0("res_corr_motive_casm_",Sys.Date(),
+saveRDS(results_casm,file=paste0(savedir,
+                                 "results/sims/res_corr_motive_casm_",Sys.Date(),
                                  "_intonly_",intercept_only,
                                  "_lineartime_",linear_time,
                                  "_timerw_",time_rw,
@@ -141,8 +133,9 @@ saveRDS(results_casm,file=paste0("res_corr_motive_casm_",Sys.Date(),
                                  "_nsim_",nsim,
                                  ".rds"))
 
-## delete all tmp results
-if (file.exists(paste0("res_corr_motive_2stage_",Sys.Date(),
+## delete all tmp results (to save space)
+if (file.exists(paste0(savedir,
+                       "results/sims/res_corr_motive_2stage_",Sys.Date(),
                        "_intonly_",intercept_only,
                        "_lineartime_",linear_time,
                        "_timerw_",time_rw,
@@ -153,7 +146,8 @@ if (file.exists(paste0("res_corr_motive_2stage_",Sys.Date(),
                        ".rds"))) {
     unlink(unlist(fl_2stage))
 }
-if (file.exists(paste0("res_corr_motive_casm_",Sys.Date(),
+if (file.exists(paste0(savedir,
+                       "results/sims/res_corr_motive_casm_",Sys.Date(),
                        "_intonly_",intercept_only,
                        "_lineartime_",linear_time,
                        "_timerw_",time_rw,
@@ -165,9 +159,11 @@ if (file.exists(paste0("res_corr_motive_casm_",Sys.Date(),
     unlink(unlist(fl_casm))
 }
 
-# load results (only if redoing plots)
-results_2stage <- readRDS("res_corr_motive_2stage_2020-01-20_intonly_FALSE_lineartime_FALSE_timerw_FALSE_interactions_FALSE_multinom_FALSE_ncause_2_nsim_100.rds")
-results_casm <- readRDS("res_corr_motive_casm_2020-01-20_intonly_FALSE_lineartime_FALSE_timerw_FALSE_interactions_FALSE_multinom_FALSE_ncause_2_nsim_100.rds")
+# load results (this is just here for convenience---only necessary if we're redoing the plots)
+# results_2stage <- readRDS(savedir,
+#                           "results/sims/res_corr_motive_2stage_2020-01-20_intonly_FALSE_lineartime_FALSE_timerw_FALSE_interactions_FALSE_multinom_FALSE_ncause_2_nsim_100.rds")
+# results_casm <- readRDS(savedir,
+#                         "results/sims/res_corr_motive_casm_2020-01-20_intonly_FALSE_lineartime_FALSE_timerw_FALSE_interactions_FALSE_multinom_FALSE_ncause_2_nsim_100.rds")
 
 # aggregate 
 res_2stage_agg <- apply(results_2stage,c(1,2,4),mean,na.rm=T)
@@ -219,7 +215,7 @@ prow <- plot_grid(plot.list[[1]] + theme(legend.position="none"),
                   labels = "AUTO", nrow = 1)
 legend <- get_legend(plot.list[[1]] + theme(legend.box.margin = margin(0, 0, 0, 12)))
 plot_grid(prow, legend, rel_widths = c(3, .4))
-ggsave(paste0("../graphs/res_corr_motive_",Sys.Date(),
+ggsave(paste0(savedir, "graphs/sims/correlation/res_corr_motive_",Sys.Date(),
               "_intonly_",intercept_only,
               "_lineartime_",linear_time,
               "_timerw_",time_rw,
@@ -236,7 +232,7 @@ prow2 <- plot_grid(plot.list[[3]] + theme(legend.position="none"),
                    labels = "AUTO", nrow = 1)
 legend2 <- get_legend(plot.list[[3]] + theme(legend.box.margin = margin(0, 0, 0, 12)))
 plot_grid(prow2, legend2, rel_widths = c(2, .3))
-ggsave(paste0("../graphs/res_corr_motive_nobias_",Sys.Date(),
+ggsave(paste0(savvedir, "graphs/sims/correlation/res_corr_motive_nobias_",Sys.Date(),
               "_intonly_",intercept_only,
               "_lineartime_",linear_time,
               "_timerw_",time_rw,

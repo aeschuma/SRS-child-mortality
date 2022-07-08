@@ -7,6 +7,37 @@
 
 rm(list=ls())
 
+## load libraries
+library(Rcpp); library(StanHeaders); library(BH); library(rstan);library(bayesplot);
+library(mvtnorm); library(MASS);library(gtools); library(parallel);
+library(scales); library(RColorBrewer);library(data.table);
+library(ggplot2);
+
+## define directories
+
+# directory for results
+savedir <- "../../../Dropbox/SRS-child-mortality-output/"
+
+# create folders to store results if necessary
+if (!file.exists(paste0(savedir, "results"))) {
+    dir.create(paste0(savedir, "results"))
+}
+if (!file.exists(paste0(savedir, "results/sims"))) {
+    dir.create(paste0(savedir, "results/sims"))
+}
+if (!file.exists(paste0(savedir, "results/sims/explore_correlation"))) {
+    dir.create(paste0(savedir, "results/sims/explore_correlation"))
+}
+if (!file.exists(paste0(savedir, "graphs"))) {
+    dir.create(paste0(savedir, "graphs"))
+}
+if (!file.exists(paste0(savedir, "graphs/sims"))) {
+    dir.create(paste0(savedir, "graphs/sims"))
+}
+if (!file.exists(paste0(savedir, "graphs/sims/explore_correlation"))) {
+    dir.create(paste0(savedir, "graphs/sims/explore_correlation"))
+}
+
 #######################
 ## SETTINGS
 #######################
@@ -26,55 +57,6 @@ cause_re_model <- FALSE
 time_rw_model <- TRUE
 no_corr_model <- FALSE # IMPLIES CAUSE RE AND TIME RW BUT NO CORRELATIONS
 FE_interactions_model <- TRUE
-
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
-
-## set the root depending on operating system
-root <- ifelse(Sys.info()[1]=="Darwin","~/",
-               ifelse(Sys.info()[1]=="Windows","P:/",
-                      ifelse(Sys.info()[1]=="Linux","/home/students/aeschuma/",
-                             stop("Unknown operating system"))))
-
-## the following code makes rstan work on the Box server and the cluster
-if (root == "P:/") {
-    Sys.setenv(HOME="C:/Users/aeschuma",
-               R_USER="C:/Users/aeschuma",
-               R_LIBS_USER="C:/Users/aeschuma/R_libraries")
-    .libPaths("C:/Users/aeschuma/R_libraries")
-} else if (root == "/home/students/aeschuma/") {
-    Sys.setenv(HOME=root,
-               R_USER=root,
-               R_LIBS_USER=paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"))
-    .libPaths(paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"))
-}
-
-## load libraries
-if (root == "/home/students/aeschuma/") {
-    library(Rcpp,lib.loc=paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"));
-    library(StanHeaders,lib.loc=paste0(root,"R/x86_64-pc-linux-gnu-library/3.6")); 
-    library(BH,lib.loc = paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"))
-    library(rstan,lib.loc = paste0(root,"R/x86_64-pc-linux-gnu-library/3.6"));
-} else {
-    library(Rcpp); library(StanHeaders); library(BH); library(rstan);library(bayesplot);
-}
-library(mvtnorm); library(MASS);library(gtools); library(parallel);
-library(scales); library(RColorBrewer);library(data.table);
-library(ggplot2);
-
-## define directories
-
-# working directory for code
-wd <- paste(root,"Desktop/SRS-child-mortality",sep="")
-
-# directory to save results (set this yourself)
-savedir <- paste(root,"Dropbox/dissertation_2/cause_specific_child_mort/model_development/recover_parameters",sep="")
-
-## set directory
-setwd(wd)
 
 ## set seed
 set.seed(881352)
@@ -541,14 +523,11 @@ for (yy in 1:length(nyears)) {
                     parlist <- c(parlist,"sigma","b_star","sigma_gamma","gamma_mat")
                 }
                 res_stan <- extract(mod_stan,pars=parlist,permuted=FALSE,inc_warmup=FALSE)
-                
-                ## save data
-                setwd(savedir)
-                
+
                 ## we are saving the model information in a csv to reference the models we save
-                if (file.exists("results/allmods.csv")) {
+                if (file.exists(paste0(savedir, "results/sims/explore_correlation/allmods.csv"))) {
                     # read in current models
-                    allmods <- read.csv("results/allmods.csv",header=TRUE,stringsAsFactors = FALSE)
+                    allmods <- read.csv(paste0(savedir, "results/sims/explore_correlation/allmods.csv"),header=TRUE,stringsAsFactors = FALSE)
                     
                     # get model number
                     model_number <- max(allmods$model_number) + 1
@@ -587,49 +566,49 @@ for (yy in 1:length(nyears)) {
                                      prop_warmup = prop_warmup,
                                      nthin = nthin)
                 
-                if (file.exists("results/allmods.csv")) {
+                if (file.exists(paste0(savedir, "results/sims/explore_correlation/allmods.csv"))) {
                     allmods <- rbind(allmods,addrow)
                 } else {
                     allmods <- addrow
                 }
                 
                 # save updated models document
-                write.csv(allmods,file="results/allmods.csv",row.names = FALSE)
+                write.csv(allmods,file=paste0(savedir, "results/sims/explore_correlation/allmods.csv"),row.names = FALSE)
                 
                 # save model chains
-                saveRDS(res_stan,file=paste0("results/model_",model_number,"_res.RDS"))
+                saveRDS(res_stan,file=paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_res.RDS"))
                 
                 # save parameters
                 if (cause_re & !time_rw) {
                     save(dat,beta,sigma_re,rho,Omega,re_vars, 
-                         file = paste0("results/model_",model_number,"_pars_data.Rdata"))
+                         file = paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_pars_data.Rdata"))
                 } else if (time_rw & !cause_re) {
                     save(dat,beta,sigma_rw,rw_vars, 
-                         file = paste0("results/model_",model_number,"_pars_data.Rdata"))
+                         file = paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_pars_data.Rdata"))
                 } else if ((time_rw & cause_re)) {
                     save(dat,beta,sigma_re,rho,Omega,re_vars,sigma_rw,rw_vars,
-                         file = paste0("results/model_",model_number,"_pars_data.Rdata"))
+                         file = paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_pars_data.Rdata"))
                 } else if (no_corr) {
                     save(dat,beta,sigma_re,re_vars,sigma_rw,rw_vars,
-                         file = paste0("results/model_",model_number,"_pars_data.Rdata"))
+                         file = paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_pars_data.Rdata"))
                 }
                 
                 # save initial values
                 mod_inits <- get_inits(mod_stan)
-                saveRDS(mod_inits,file=paste0("results/model_",model_number,"_inits.RDS"))
+                saveRDS(mod_inits,file=paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_inits.RDS"))
                 
                 # save summaries
                 mod_summary <- summary(mod_stan,pars=parlist[!(parlist %in% c("gamma_mat","b_star"))],probs=c(0.1,0.5,0.9))$summary
-                saveRDS(mod_summary,file=paste0("results/model_",model_number,"_summaries.RDS"))
+                saveRDS(mod_summary,file=paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_summaries.RDS"))
 
                 # save diagnostics
                 mod_diag <- data.frame(n_divergent_iters=sum(get_divergent_iterations(mod_stan)),
                                        n_max_tree_depth_iters=sum(get_max_treedepth_iterations(mod_stan)),
                                        n_low_BFMI_chains=sum(which(get_bfmi(mod_stan)<0.2)))
-                saveRDS(mod_diag,file=paste0("results/model_",model_number,"_diag.RDS"))
+                saveRDS(mod_diag,file=paste0(savedir, "results/sims/explore_correlation/model_",model_number,"_diag.RDS"))
                 
                 # save graphs of the model diagnostics
-                pdf(paste0("graphs/model_",model_number,"_traceplots.pdf"),width=10,height=10)
+                pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_traceplots.pdf"),width=10,height=10)
                 print(stan_trace(mod_stan,pars=c("beta")))
                 if (cause_re_model) {
                     print(stan_trace(mod_stan,pars=c("sigma")))
@@ -645,7 +624,7 @@ for (yy in 1:length(nyears)) {
                 dev.off()
                 
                 # more plots of model diagnostics
-                pdf(paste0("graphs/model_",model_number,"_traceplotsREsample.pdf"),width=4,height=4)
+                pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_traceplotsREsample.pdf"),width=4,height=4)
                 
                 if (time_rw_model | no_corr_model) {
                     for (gg in sample(1:n_rw_index,ceiling(n_rw_index/10),replace=FALSE)) {
@@ -669,7 +648,7 @@ for (yy in 1:length(nyears)) {
                 dev.off()
                 
                 ## stan diagnostic plots
-                pdf(paste0("graphs/model_",model_number,"_diagplots.pdf"),width=10,height=10)
+                pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_diagplots.pdf"),width=10,height=10)
                 stan_rhat(mod_stan)
                 stan_diag(mod_stan)
                 stan_ess(mod_stan)
@@ -713,7 +692,7 @@ for (yy in 1:length(nyears)) {
                 
                 ## plot results
                 setwd(savedir)
-                pdf(paste0("graphs/model_",model_number,"_re_compare_truth.pdf"),width=6,height=6)
+                pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_re_compare_truth.pdf"),width=6,height=6)
                 
                 plot(beta[1],type="n",ylim=range(c(summary_beta_stan[,1],beta[1])),xlim=c(0.5,1.5),
                      xlab=expression(alpha),xaxt="n",ylab="value")
@@ -792,7 +771,7 @@ for (yy in 1:length(nyears)) {
                 dev.off()
                 
                 ## plot a visualization of the components of the model
-                pdf(paste0("graphs/model_",model_number,"_example_component_plot.pdf"),height=8,width=10)
+                pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_example_component_plot.pdf"),height=8,width=10)
                 
                 ## example plot with just one
                 exindex <- dat$reg==2 & dat$cause==2 & dat$ageg==2
@@ -832,7 +811,7 @@ for (yy in 1:length(nyears)) {
                 plotrows <- 14
                 plotcols <- 8
                 
-                pdf(paste0("graphs/model_",model_number,"_all_component_plots.pdf"),height=plotrows*2,width=plotcols*2)
+                pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_all_component_plots.pdf"),height=plotrows*2,width=plotcols*2)
                 
                 par(mfcol=c(14,8), mar=c(2.1, 1.1, 1.1, 4.1), xpd=NA,oma=c(4,4,1,1))
                 counter <- 0
@@ -882,7 +861,7 @@ for (yy in 1:length(nyears)) {
                     plot_title_posterior <- ggtitle("Posterior distributions",
                                                     "with medians and 80% intervals")
                     
-                    pdf(paste0("graphs/model_",model_number,"_posteriordists.pdf"), 
+                    pdf(paste0(savedir, "graphs/sims/explore_correlation/model_",model_number,"_posteriordists.pdf"), 
                         width=10,height=16)
                     
                     # betas
